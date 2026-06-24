@@ -1,0 +1,9 @@
+.agents/
+.codex/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+
+# Local runtime output
+*.log
