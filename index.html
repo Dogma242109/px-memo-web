@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>px memo web</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <label class="title-field">
+          <span>作品名</span>
+          <input id="projectTitle" type="text" value="Untitled">
+        </label>
+        <div class="status-text" id="statusText">310 x 230 / 3x</div>
+      </header>
+
+      <main class="workspace">
+        <section class="left-pane" aria-label="描画エリア">
+          <div class="toolbar" aria-label="描画ツール">
+            <div class="segmented">
+              <button class="tool-button is-active" type="button" data-tool="pen" aria-pressed="true">ペン</button>
+              <button class="tool-button" type="button" data-tool="eraser" aria-pressed="false">消し</button>
+            </div>
+
+            <div class="edit-actions" aria-label="編集操作">
+              <button id="undoButton" type="button" disabled>戻す</button>
+              <button id="redoButton" type="button" disabled>やり直し</button>
+              <button id="clearFrameButton" type="button">白紙</button>
+            </div>
+
+            <fieldset class="palette-group">
+              <legend>色</legend>
+              <button class="color-swatch is-active" type="button" data-color="#111111" style="--swatch: #111111" aria-label="黒" aria-pressed="true"></button>
+              <button class="color-swatch" type="button" data-color="#ffffff" style="--swatch: #ffffff" aria-label="白" aria-pressed="false"></button>
+              <button class="color-swatch" type="button" data-color="#d3382f" style="--swatch: #d3382f" aria-label="赤" aria-pressed="false"></button>
+              <button class="color-swatch" type="button" data-color="#2f5fd3" style="--swatch: #2f5fd3" aria-label="青" aria-pressed="false"></button>
+              <button class="color-swatch" type="button" data-color="#2f9b4f" style="--swatch: #2f9b4f" aria-label="緑" aria-pressed="false"></button>
+              <button class="color-swatch" type="button" data-color="#f2d23c" style="--swatch: #f2d23c" aria-label="黄" aria-pressed="false"></button>
+            </fieldset>
+
+            <label class="control-group size-control">
+              <span>太さ</span>
+              <input id="sizeInput" type="range" min="1" max="16" value="3">
+              <output id="sizeOutput">3</output>
+            </label>
+
+            <label class="control-group zoom-control">
+              <span>倍率</span>
+              <select id="zoomSelect">
+                <option value="2">2x</option>
+                <option value="3" selected>3x</option>
+                <option value="4">4x</option>
+                <option value="5">5x</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="canvas-stage">
+            <canvas id="drawingCanvas" width="310" height="230" aria-label="描画キャンバス"></canvas>
+          </div>
+
+          <div class="playback-bar" aria-label="再生操作">
+            <button id="playButton" type="button">再生</button>
+            <button id="stopButton" type="button">停止</button>
+            <label class="control-group speed-control">
+              <span>Speed</span>
+              <select id="speedSelect">
+                <option value="0.2">0 / 0.2 FPS</option>
+                <option value="0.5">1 / 0.5 FPS</option>
+                <option value="1">2 / 1 FPS</option>
+                <option value="2">3 / 2 FPS</option>
+                <option value="4">4 / 4 FPS</option>
+                <option value="6">5 / 6 FPS</option>
+                <option value="8" selected>6 / 8 FPS</option>
+                <option value="12">7 / 12 FPS</option>
+                <option value="20">8 / 20 FPS</option>
+                <option value="24">9 / 24 FPS</option>
+                <option value="30">10 / 30 FPS</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <aside class="frames-pane" aria-label="フレーム一覧">
+          <div class="frames-header">
+            <h2>フレーム</h2>
+            <button id="addFrameButton" type="button">追加</button>
+          </div>
+          <div class="frames-list" id="framesList"></div>
+        </aside>
+      </main>
+    </div>
+
+    <script src="main.js"></script>
+  </body>
+</html>

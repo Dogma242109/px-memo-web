@@ -1,9 +1,13 @@
-.agents/
-.codex/
-
-# OS / editor noise
 .DS_Store
 Thumbs.db
 
-# Local runtime output
+node_modules/
+dist/
+build/
+__pycache__/
+*.py[cod]
+
+.env
+.env.*
+
 *.log
