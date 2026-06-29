@@ -1,4 +1,5 @@
 :root {
+  /* 画面全体で使う色。アプリの雰囲気を変える時はまずここを見る。 */
   color-scheme: light;
   --bg: #f6f5f1;
   --panel: #ffffff;
@@ -61,6 +62,7 @@ button:disabled:active {
 }
 
 .app-shell {
+  /* キャンバスを実倍率で表示するため、必要なら横に広がる。 */
   width: max-content;
   min-width: min(1260px, calc(100vw - 32px));
   margin: 16px auto;
@@ -97,14 +99,17 @@ button:disabled:active {
 }
 
 .workspace {
+  /* 左ツール / 中央キャンバス / 右一覧 の3カラム構成。 */
   display: grid;
-  grid-template-columns: max-content 220px;
+  grid-template-columns: 150px max-content 360px;
   gap: 16px;
   align-items: start;
 }
 
 .left-pane,
-.frames-pane {
+.frames-pane,
+.layers-pane,
+.tool-rail {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -116,7 +121,15 @@ button:disabled:active {
   width: max-content;
 }
 
-.toolbar,
+.tool-rail {
+  /* ペン、色、ブラシ、編集操作を縦に並べる左パネル。 */
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  min-height: 100%;
+  padding: 12px;
+}
+
 .playback-bar,
 .frames-header {
   display: flex;
@@ -129,7 +142,7 @@ button:disabled:active {
 
 .segmented {
   display: inline-grid;
-  grid-template-columns: repeat(2, 70px);
+  grid-template-columns: 1fr;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -141,16 +154,16 @@ button:disabled:active {
 }
 
 .segmented button + button {
-  border-left: 1px solid var(--line);
+  border-top: 1px solid var(--line);
 }
 
 .edit-actions {
-  display: inline-flex;
+  display: grid;
   gap: 6px;
 }
 
 .edit-actions button {
-  min-width: 72px;
+  width: 100%;
 }
 
 .tool-button.is-active,
@@ -168,8 +181,9 @@ button:disabled:active {
 }
 
 .palette-group {
-  display: inline-flex;
-  align-items: center;
+  /* 6色固定パレット。スウォッチ自体がボタンになっている。 */
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   min-width: 0;
   margin: 0;
@@ -178,6 +192,7 @@ button:disabled:active {
 }
 
 .palette-group legend {
+  grid-column: 1 / -1;
   padding: 0;
   color: var(--muted);
   font-size: 13px;
@@ -198,12 +213,133 @@ button:disabled:active {
   outline: 2px solid rgba(35, 115, 111, 0.28);
 }
 
-.color-swatch[data-color="#ffffff"] {
+.color-swatch[data-color="#ffffff"],
+.color-swatch[data-color="#fff000"] {
   box-shadow: inset 0 0 0 1px #ddd6c8;
 }
 
+.brush-picker,
+.pattern-picker {
+  /* ペン先と模様は、名前ではなく見た目で選べるボタン群。 */
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.brush-picker legend,
+.pattern-picker legend {
+  grid-column: 1 / -1;
+  padding: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.brush-option,
+.pattern-option {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  min-width: 54px;
+  height: 42px;
+  min-height: 42px;
+  padding: 0;
+}
+
+.brush-option.is-active,
+.pattern-option.is-active {
+  border-color: var(--accent-strong);
+  outline: 2px solid rgba(35, 115, 111, 0.28);
+}
+
+.brush-preview,
+.pattern-preview {
+  /* プレビューもドットがぼけないようにする。 */
+  display: block;
+  width: 24px;
+  height: 24px;
+  image-rendering: pixelated;
+}
+
+.brush-preview-square {
+  background: #000;
+}
+
+.brush-preview-plus {
+  background:
+    linear-gradient(#000 0 0) center / 100% 8px no-repeat,
+    linear-gradient(#000 0 0) center / 8px 100% no-repeat;
+}
+
+.brush-preview-round {
+  border-radius: 50%;
+  background: #000;
+}
+
+.pattern-solid {
+  /* 以下は模様ボタンのプレビュー用CSS。実際の描画処理はmain.js側。 */
+  background: #000;
+}
+
+.pattern-dots {
+  background: radial-gradient(circle, #000 0 3px, transparent 4px) 0 0 / 8px 8px;
+}
+
+.pattern-checker {
+  background:
+    linear-gradient(45deg, #000 25%, transparent 25% 75%, #000 75%),
+    linear-gradient(45deg, #000 25%, transparent 25% 75%, #000 75%);
+  background-position: 0 0, 4px 4px;
+  background-size: 8px 8px;
+}
+
+.pattern-diagonal {
+  background:
+    repeating-linear-gradient(135deg, #000 0 3px, transparent 3px 8px),
+    repeating-linear-gradient(45deg, #000 0 3px, transparent 3px 8px);
+}
+
+.pattern-vertical {
+  background: repeating-linear-gradient(90deg, #000 0 4px, transparent 4px 8px);
+}
+
+.pattern-horizontal {
+  background: repeating-linear-gradient(0deg, #000 0 4px, transparent 4px 8px);
+}
+
+.pattern-mesh {
+  background:
+    repeating-linear-gradient(90deg, #000 0 3px, transparent 3px 8px),
+    repeating-linear-gradient(0deg, #000 0 3px, transparent 3px 8px);
+}
+
+.pattern-black-checker {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 5px, #000 5px 8px),
+    repeating-linear-gradient(0deg, transparent 0 5px, #000 5px 8px);
+}
+
+.pattern-holes {
+  background:
+    radial-gradient(circle, transparent 0 2px, #000 2px) 6px 6px / 9px 9px,
+    #000;
+}
+
+.visually-hidden {
+  /* 画面には出さないが、JSが値を扱うために残しているselect。 */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .size-control input {
-  width: 140px;
+  width: 100%;
 }
 
 .size-control output {
@@ -222,7 +358,13 @@ button:disabled:active {
   color: var(--ink);
 }
 
+.tool-rail .control-group {
+  display: grid;
+  gap: 6px;
+}
+
 .canvas-stage {
+  /* キャンバス外側の作業台。背景は透明部分がわかるような市松模様。 */
   display: grid;
   place-items: center;
   min-height: 730px;
@@ -238,6 +380,7 @@ button:disabled:active {
 }
 
 #drawingCanvas {
+  /* 内部解像度310x230を、CSSで整数倍表示する。 */
   width: 930px;
   height: auto;
   aspect-ratio: 310 / 230;
@@ -261,7 +404,16 @@ button:disabled:active {
   padding: 6px 8px;
 }
 
-.frames-pane {
+.side-stack {
+  /* 右側のフレーム一覧とレイヤー風パネル。 */
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.frames-pane,
+.layers-pane {
   overflow: hidden;
 }
 
@@ -284,6 +436,24 @@ button:disabled:active {
   max-height: calc(100vh - 104px);
   overflow: auto;
   padding: 12px;
+}
+
+.layer-list {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.layer-item {
+  height: 74px;
+  text-align: right;
+  padding: 8px;
+  background: #fff;
+}
+
+.layer-item.is-active {
+  border-color: var(--accent);
+  outline: 2px solid rgba(35, 115, 111, 0.22);
 }
 
 .frame-item {
@@ -321,6 +491,11 @@ button:disabled:active {
 @media (max-width: 920px) {
   .workspace {
     grid-template-columns: 1fr;
+  }
+
+  .tool-rail,
+  .side-stack {
+    width: min(100%, 930px);
   }
 
   .frames-list {

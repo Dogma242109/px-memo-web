@@ -17,46 +17,92 @@
       </header>
 
       <main class="workspace">
-        <section class="left-pane" aria-label="描画エリア">
-          <div class="toolbar" aria-label="描画ツール">
-            <div class="segmented">
-              <button class="tool-button is-active" type="button" data-tool="pen" aria-pressed="true">ペン</button>
-              <button class="tool-button" type="button" data-tool="eraser" aria-pressed="false">消し</button>
-            </div>
-
-            <div class="edit-actions" aria-label="編集操作">
-              <button id="undoButton" type="button" disabled>戻す</button>
-              <button id="redoButton" type="button" disabled>やり直し</button>
-              <button id="clearFrameButton" type="button">白紙</button>
-            </div>
-
-            <fieldset class="palette-group">
-              <legend>色</legend>
-              <button class="color-swatch is-active" type="button" data-color="#111111" style="--swatch: #111111" aria-label="黒" aria-pressed="true"></button>
-              <button class="color-swatch" type="button" data-color="#ffffff" style="--swatch: #ffffff" aria-label="白" aria-pressed="false"></button>
-              <button class="color-swatch" type="button" data-color="#d3382f" style="--swatch: #d3382f" aria-label="赤" aria-pressed="false"></button>
-              <button class="color-swatch" type="button" data-color="#2f5fd3" style="--swatch: #2f5fd3" aria-label="青" aria-pressed="false"></button>
-              <button class="color-swatch" type="button" data-color="#2f9b4f" style="--swatch: #2f9b4f" aria-label="緑" aria-pressed="false"></button>
-              <button class="color-swatch" type="button" data-color="#f2d23c" style="--swatch: #f2d23c" aria-label="黄" aria-pressed="false"></button>
-            </fieldset>
-
-            <label class="control-group size-control">
-              <span>太さ</span>
-              <input id="sizeInput" type="range" min="1" max="16" value="3">
-              <output id="sizeOutput">3</output>
-            </label>
-
-            <label class="control-group zoom-control">
-              <span>倍率</span>
-              <select id="zoomSelect">
-                <option value="2">2x</option>
-                <option value="3" selected>3x</option>
-                <option value="4">4x</option>
-                <option value="5">5x</option>
-              </select>
-            </label>
+        <!-- 左側: 描画ツール、色、ブラシ、編集操作をまとめたパネル -->
+        <aside class="tool-rail" aria-label="ツール">
+          <div class="segmented">
+            <button class="tool-button is-active" type="button" data-tool="pen" aria-pressed="true">ペン</button>
+            <button class="tool-button" type="button" data-tool="eraser" aria-pressed="false">消し</button>
           </div>
 
+          <fieldset class="palette-group">
+            <legend>色</legend>
+            <button class="color-swatch is-active" type="button" data-color="#000000" style="--swatch: #000000" aria-label="黒" aria-pressed="true"></button>
+            <button class="color-swatch" type="button" data-color="#ffffff" style="--swatch: #ffffff" aria-label="白" aria-pressed="false"></button>
+            <button class="color-swatch" type="button" data-color="#ff0000" style="--swatch: #ff0000" aria-label="赤" aria-pressed="false"></button>
+            <button class="color-swatch" type="button" data-color="#0000ff" style="--swatch: #0000ff" aria-label="青" aria-pressed="false"></button>
+            <button class="color-swatch" type="button" data-color="#008a36" style="--swatch: #008a36" aria-label="緑" aria-pressed="false"></button>
+            <button class="color-swatch" type="button" data-color="#fff000" style="--swatch: #fff000" aria-label="黄" aria-pressed="false"></button>
+          </fieldset>
+
+          <label class="control-group size-control">
+            <span>太さ</span>
+            <input id="sizeInput" type="range" min="1" max="16" value="3">
+            <output id="sizeOutput">3</output>
+          </label>
+
+          <label class="control-group zoom-control">
+            <span>倍率</span>
+            <select id="zoomSelect">
+              <option value="2">2x</option>
+              <option value="3" selected>3x</option>
+              <option value="4">4x</option>
+              <option value="5">5x</option>
+            </select>
+          </label>
+
+          <fieldset class="brush-picker" aria-label="ペン先">
+            <legend>ペン先</legend>
+            <button class="brush-option is-active" type="button" data-brush="square" aria-label="四角" aria-pressed="true">
+              <span class="brush-preview brush-preview-square"></span>
+            </button>
+            <button class="brush-option" type="button" data-brush="plus" aria-label="十字" aria-pressed="false">
+              <span class="brush-preview brush-preview-plus"></span>
+            </button>
+            <button class="brush-option" type="button" data-brush="round" aria-label="丸風" aria-pressed="false">
+              <span class="brush-preview brush-preview-round"></span>
+            </button>
+          </fieldset>
+
+          <fieldset class="pattern-picker" aria-label="模様">
+            <legend>模様</legend>
+            <button class="pattern-option is-active" type="button" data-pattern="solid" aria-label="ベタ" aria-pressed="true">
+              <span class="pattern-preview pattern-solid"></span>
+            </button>
+            <button class="pattern-option" type="button" data-pattern="dots" aria-label="点々" aria-pressed="false">
+              <span class="pattern-preview pattern-dots"></span>
+            </button>
+            <button class="pattern-option" type="button" data-pattern="checker" aria-label="市松" aria-pressed="false">
+              <span class="pattern-preview pattern-checker"></span>
+            </button>
+            <button class="pattern-option" type="button" data-pattern="diagonal" aria-label="斜格子" aria-pressed="false">
+              <span class="pattern-preview pattern-diagonal"></span>
+            </button>
+            <button class="pattern-option" type="button" data-pattern="vertical" aria-label="縦線" aria-pressed="false">
+              <span class="pattern-preview pattern-vertical"></span>
+            </button>
+            <button class="pattern-option" type="button" data-pattern="horizontal" aria-label="横線" aria-pressed="false">
+              <span class="pattern-preview pattern-horizontal"></span>
+            </button>
+            <button class="pattern-option" type="button" data-pattern="mesh" aria-label="網" aria-pressed="false">
+              <span class="pattern-preview pattern-mesh"></span>
+            </button>
+            <button class="pattern-option" type="button" data-pattern="blackChecker" aria-label="黒市松" aria-pressed="false">
+              <span class="pattern-preview pattern-black-checker"></span>
+            </button>
+            <button class="pattern-option" type="button" data-pattern="holes" aria-label="穴あき" aria-pressed="false">
+              <span class="pattern-preview pattern-holes"></span>
+            </button>
+          </fieldset>
+
+          <div class="edit-actions" aria-label="編集操作">
+            <button id="undoButton" type="button" disabled>戻す</button>
+            <button id="redoButton" type="button" disabled>やり直し</button>
+            <button id="clearFrameButton" type="button">白紙</button>
+          </div>
+        </aside>
+
+        <!-- 中央: 実際に描くキャンバスと再生操作だけを置く領域 -->
+        <section class="left-pane" aria-label="描画エリア">
           <div class="canvas-stage">
             <canvas id="drawingCanvas" width="310" height="230" aria-label="描画キャンバス"></canvas>
           </div>
@@ -81,14 +127,44 @@
               </select>
             </label>
           </div>
+
+          <!-- 見た目は柄ボタンで選ぶが、JS側ではselectの値として扱う -->
+          <select id="brushSelect" class="visually-hidden" aria-hidden="true" tabindex="-1">
+            <option value="square" selected>四角</option>
+            <option value="plus">+</option>
+            <option value="round">丸風</option>
+          </select>
+          <select id="patternSelect" class="visually-hidden" aria-hidden="true" tabindex="-1">
+            <option value="solid" selected>ベタ</option>
+            <option value="dots">点々</option>
+            <option value="checker">市松</option>
+            <option value="diagonal">斜格子</option>
+            <option value="vertical">縦線</option>
+            <option value="horizontal">横線</option>
+            <option value="mesh">網</option>
+            <option value="blackChecker">黒市松</option>
+            <option value="holes">穴あき</option>
+          </select>
         </section>
 
-        <aside class="frames-pane" aria-label="フレーム一覧">
-          <div class="frames-header">
-            <h2>フレーム</h2>
-            <button id="addFrameButton" type="button">追加</button>
-          </div>
-          <div class="frames-list" id="framesList"></div>
+        <!-- 右側: フレーム一覧と、将来のレイヤー機能用パネル -->
+        <aside class="side-stack" aria-label="一覧">
+          <section class="frames-pane" aria-label="フレーム一覧">
+            <div class="frames-header">
+              <h2>フレーム</h2>
+              <button id="addFrameButton" type="button">追加</button>
+            </div>
+            <div class="frames-list" id="framesList"></div>
+          </section>
+
+          <section class="layers-pane" aria-label="レイヤー">
+            <div class="frames-header">
+              <h2>レイヤー</h2>
+            </div>
+            <div class="layer-list">
+              <button class="layer-item is-active" type="button">1</button>
+            </div>
+          </section>
         </aside>
       </main>
     </div>

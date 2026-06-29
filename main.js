@@ -2,11 +2,14 @@ const CANVAS_WIDTH = 310;
 const CANVAS_HEIGHT = 230;
 const MAX_HISTORY = 128;
 
+// 画面上の操作部品を取得する。
 const canvas = document.querySelector("#drawingCanvas");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
 const sizeInput = document.querySelector("#sizeInput");
 const sizeOutput = document.querySelector("#sizeOutput");
+const brushSelect = document.querySelector("#brushSelect");
+const patternSelect = document.querySelector("#patternSelect");
 const zoomSelect = document.querySelector("#zoomSelect");
 const speedSelect = document.querySelector("#speedSelect");
 const framesList = document.querySelector("#framesList");
@@ -19,9 +22,12 @@ const clearFrameButton = document.querySelector("#clearFrameButton");
 const statusText = document.querySelector("#statusText");
 const toolButtons = [...document.querySelectorAll(".tool-button")];
 const colorButtons = [...document.querySelectorAll(".color-swatch")];
+const brushButtons = [...document.querySelectorAll(".brush-option")];
+const patternButtons = [...document.querySelectorAll(".pattern-option")];
 
+// アプリ全体の現在状態。
 let currentTool = "pen";
-let currentColor = "#111111";
+let currentColor = "#000000";
 let displayScale = Number(zoomSelect.value);
 let isDrawing = false;
 let lastPoint = null;
@@ -29,6 +35,7 @@ let activeFrameIndex = 0;
 let playbackTimer = null;
 let frames = [createBlankFrame()];
 
+// Canvas API側でも拡大縮小時にぼけないようにしておく。
 ctx.imageSmoothingEnabled = false;
 updateCanvasScale();
 loadFrame(0);
@@ -36,6 +43,7 @@ renderFrames();
 updateHistoryButtons();
 
 toolButtons.forEach((button) => {
+  // ペン/消しゴムの切り替え。
   button.addEventListener("click", () => {
     currentTool = button.dataset.tool;
     toolButtons.forEach((item) => {
@@ -51,6 +59,7 @@ sizeInput.addEventListener("input", () => {
 });
 
 colorButtons.forEach((button) => {
+  // 6色パレットの切り替え。
   button.addEventListener("click", () => {
     currentColor = button.dataset.color;
     colorButtons.forEach((item) => {
@@ -61,12 +70,29 @@ colorButtons.forEach((button) => {
   });
 });
 
+brushButtons.forEach((button) => {
+  // ペン先は見た目ボタンで選び、内部的には隠しselectの値に反映する。
+  button.addEventListener("click", () => {
+    brushSelect.value = button.dataset.brush;
+    updateOptionButtons(brushButtons, button);
+  });
+});
+
+patternButtons.forEach((button) => {
+  // 模様もペン先と同じく、見た目ボタンから隠しselectへ反映する。
+  button.addEventListener("click", () => {
+    patternSelect.value = button.dataset.pattern;
+    updateOptionButtons(patternButtons, button);
+  });
+});
+
 zoomSelect.addEventListener("change", () => {
   displayScale = Number(zoomSelect.value);
   updateCanvasScale();
 });
 
 canvas.addEventListener("pointerdown", (event) => {
+  // 描き始める直前の状態をUndo履歴に積む。
   stopPlayback();
   pushUndoState();
   canvas.setPointerCapture(event.pointerId);
@@ -144,6 +170,7 @@ speedSelect.addEventListener("change", () => {
 });
 
 document.addEventListener("keydown", (event) => {
+  // 入力欄ではブラウザ標準のCtrl+Zを優先する。
   if (isEditableTarget(event.target)) {
     return;
   }
@@ -163,6 +190,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 function createBlankFrame() {
+  // 新しいフレームは白紙キャンバスの画像として作る。
   const scratch = document.createElement("canvas");
   scratch.width = CANVAS_WIDTH;
   scratch.height = CANVAS_HEIGHT;
@@ -184,6 +212,7 @@ function fillCanvasWhite() {
 }
 
 function getCanvasPoint(event) {
+  // CSSで拡大表示しているので、画面座標を内部310x230座標へ変換する。
   const rect = canvas.getBoundingClientRect();
   const x = Math.floor(((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH);
   const y = Math.floor(((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT);
@@ -195,34 +224,159 @@ function getCanvasPoint(event) {
 }
 
 function drawPoint(point) {
-  paintSquareBrush(point.x, point.y);
+  paintBrush(point.x, point.y);
 }
 
 function drawLine(from, to) {
+  // ポインタ移動の間を整数座標で埋めて、線が途切れないようにする。
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
 
   if (steps === 0) {
-    paintSquareBrush(from.x, from.y);
+    paintBrush(from.x, from.y);
     return;
   }
 
   for (let step = 0; step <= steps; step += 1) {
     const x = Math.round(from.x + (dx * step) / steps);
     const y = Math.round(from.y + (dy * step) / steps);
-    paintSquareBrush(x, y);
+    paintBrush(x, y);
   }
 }
 
-function paintSquareBrush(x, y) {
+function paintBrush(x, y) {
+  // ペン先形状と模様を組み合わせて、1点ぶんのブラシを描く。
   const size = Number(sizeInput.value);
+  const color = getDrawColor();
+  const brush = brushSelect.value;
+  const pattern = patternSelect.value;
+
+  if (brush === "square") {
+    paintSquareMask(x, y, size, color, pattern);
+    return;
+  }
+
+  if (brush === "plus") {
+    paintPlusMask(x, y, size, color, pattern);
+    return;
+  }
+
+  paintRoundMask(x, y, size, color, pattern);
+}
+
+function paintSquareMask(x, y, size, color, pattern) {
   const offset = Math.floor(size / 2);
   const startX = x - offset;
   const startY = y - offset;
 
-  ctx.fillStyle = getDrawColor();
-  ctx.fillRect(startX, startY, size, size);
+  paintMaskPixels(startX, startY, size, color, pattern, () => true);
+}
+
+function paintPlusMask(x, y, size, color, pattern) {
+  const radius = Math.floor(size / 2);
+  const arm = Math.max(1, Math.ceil(size / 3));
+  const startX = x - radius;
+  const startY = y - radius;
+  const armOffset = Math.floor(arm / 2);
+
+  paintMaskPixels(startX, startY, size, color, pattern, (maskX, maskY) => {
+    const isHorizontalArm = Math.abs(maskY - radius) <= armOffset;
+    const isVerticalArm = Math.abs(maskX - radius) <= armOffset;
+    return isHorizontalArm || isVerticalArm;
+  });
+}
+
+function paintRoundMask(x, y, size, color, pattern) {
+  if (size === 1) {
+    paintSquareMask(x, y, size, color, pattern);
+    return;
+  }
+
+  const radius = Math.floor(size / 2);
+  const startX = x - radius;
+  const startY = y - radius;
+  const centerOffset = (size - 1) / 2;
+  const radiusSquared = (size / 2 - 0.15) ** 2;
+
+  paintMaskPixels(startX, startY, size, color, pattern, (maskX, maskY) => {
+    const dx = maskX - centerOffset;
+    const dy = maskY - centerOffset;
+    return dx * dx + dy * dy <= radiusSquared;
+  });
+}
+
+function paintMaskPixels(startX, startY, size, color, pattern, isInsideShape) {
+  // ペン先形状の中で、さらに模様パターンが塗る場所だけ1pxずつ描画する。
+  ctx.fillStyle = color;
+
+  for (let maskY = 0; maskY < size; maskY += 1) {
+    for (let maskX = 0; maskX < size; maskX += 1) {
+      const canvasX = startX + maskX;
+      const canvasY = startY + maskY;
+
+      if (isInsideShape(maskX, maskY) && shouldPaintPattern(pattern, canvasX, canvasY)) {
+        ctx.fillRect(canvasX, canvasY, 1, 1);
+      }
+    }
+  }
+}
+
+function shouldPaintPattern(pattern, x, y) {
+  // 模様はペン位置ではなくキャンバス絶対座標で決める。
+  // こうすると同じ場所をなぞっても点々や市松の位相がズレない。
+  const normalizedX = positiveModulo(x, 2);
+  const normalizedY = positiveModulo(y, 2);
+
+  if (pattern === "solid") {
+    return true;
+  }
+
+  if (pattern === "dots") {
+    return normalizedX === 0 && normalizedY === 0;
+  }
+
+  if (pattern === "checker") {
+    return positiveModulo(x + y, 2) === 0;
+  }
+
+  if (pattern === "vertical") {
+    return normalizedX === 0;
+  }
+
+  if (pattern === "horizontal") {
+    return normalizedY === 0;
+  }
+
+  if (pattern === "diagonal") {
+    return positiveModulo(x + y, 4) === 0 || positiveModulo(x - y, 4) === 0;
+  }
+
+  if (pattern === "mesh") {
+    return normalizedX === 0 || normalizedY === 0;
+  }
+
+  if (pattern === "blackChecker") {
+    return normalizedX === 1 || normalizedY === 1;
+  }
+
+  if (pattern === "holes") {
+    return !(positiveModulo(x, 3) === 2 && positiveModulo(y, 3) === 2);
+  }
+
+  return true;
+}
+
+function positiveModulo(value, divisor) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function updateOptionButtons(buttons, activeButton) {
+  buttons.forEach((button) => {
+    const isActive = button === activeButton;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
 }
 
 function getDrawColor() {
@@ -260,6 +414,7 @@ function loadFrame(index) {
 }
 
 function pushUndoState() {
+  // 現在フレームごとにUndo/Redo履歴を持つ。
   const frame = frames[activeFrameIndex];
   frame.undoStack.push(canvas.toDataURL("image/png"));
 
@@ -322,6 +477,7 @@ function updateHistoryButtons() {
 }
 
 function renderFrames() {
+  // フレーム一覧を現在のframes配列から作り直す。
   framesList.replaceChildren();
 
   frames.forEach((frame, index) => {
