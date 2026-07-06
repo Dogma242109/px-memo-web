@@ -17,7 +17,7 @@
       </header>
 
       <main class="workspace">
-        <!-- 左側: 描画ツール、色、ブラシ、編集操作をまとめたパネル -->
+        <!-- Left tools: temporary always-visible controls until the toolbox owns them. -->
         <aside class="tool-rail" aria-label="ツール">
           <div class="segmented">
             <button class="tool-button is-active" type="button" data-tool="pen" aria-pressed="true">ペン</button>
@@ -58,7 +58,7 @@
             <button class="brush-option" type="button" data-brush="plus" aria-label="十字" aria-pressed="false">
               <span class="brush-preview brush-preview-plus"></span>
             </button>
-            <button class="brush-option" type="button" data-brush="round" aria-label="丸風" aria-pressed="false">
+            <button class="brush-option" type="button" data-brush="round" aria-label="丸" aria-pressed="false">
               <span class="brush-preview brush-preview-round"></span>
             </button>
           </fieldset>
@@ -83,10 +83,10 @@
             <button class="pattern-option" type="button" data-pattern="horizontal" aria-label="横線" aria-pressed="false">
               <span class="pattern-preview pattern-horizontal"></span>
             </button>
-            <button class="pattern-option" type="button" data-pattern="mesh" aria-label="網" aria-pressed="false">
+            <button class="pattern-option" type="button" data-pattern="mesh" aria-label="網1" aria-pressed="false">
               <span class="pattern-preview pattern-mesh"></span>
             </button>
-            <button class="pattern-option" type="button" data-pattern="blackChecker" aria-label="黒市松" aria-pressed="false">
+            <button class="pattern-option" type="button" data-pattern="blackChecker" aria-label="網2" aria-pressed="false">
               <span class="pattern-preview pattern-black-checker"></span>
             </button>
             <button class="pattern-option" type="button" data-pattern="holes" aria-label="穴あき" aria-pressed="false">
@@ -101,7 +101,7 @@
           </div>
         </aside>
 
-        <!-- 中央: 実際に描くキャンバスと再生操作だけを置く領域 -->
+        <!-- Center: drawing canvas and playback controls. -->
         <section class="left-pane" aria-label="描画エリア">
           <div class="canvas-stage">
             <canvas id="drawingCanvas" width="310" height="230" aria-label="描画キャンバス"></canvas>
@@ -128,11 +128,11 @@
             </label>
           </div>
 
-          <!-- 見た目は柄ボタンで選ぶが、JS側ではselectの値として扱う -->
+          <!-- Hidden selects keep the drawing code simple while buttons provide the visible UI. -->
           <select id="brushSelect" class="visually-hidden" aria-hidden="true" tabindex="-1">
             <option value="square" selected>四角</option>
-            <option value="plus">+</option>
-            <option value="round">丸風</option>
+            <option value="plus">十字</option>
+            <option value="round">丸</option>
           </select>
           <select id="patternSelect" class="visually-hidden" aria-hidden="true" tabindex="-1">
             <option value="solid" selected>ベタ</option>
@@ -141,13 +141,13 @@
             <option value="diagonal">斜格子</option>
             <option value="vertical">縦線</option>
             <option value="horizontal">横線</option>
-            <option value="mesh">網</option>
-            <option value="blackChecker">黒市松</option>
+            <option value="mesh">網1</option>
+            <option value="blackChecker">網2</option>
             <option value="holes">穴あき</option>
           </select>
         </section>
 
-        <!-- 右側: フレーム一覧と、将来のレイヤー機能用パネル -->
+        <!-- Right side: frame thumbnails and the future layer area. -->
         <aside class="side-stack" aria-label="一覧">
           <section class="frames-pane" aria-label="フレーム一覧">
             <div class="frames-header">
@@ -167,6 +167,41 @@
           </section>
         </aside>
       </main>
+
+      <button class="toolbox-toggle" id="toolboxToggle" type="button" aria-expanded="false" aria-controls="toolboxPanel" aria-label="道具箱を開く">
+        <img src="images/detail_icon.png" alt="" width="16" height="16">
+      </button>
+
+      <section class="toolbox-panel" id="toolboxPanel" aria-label="道具箱" hidden>
+        <div class="toolbox-tabs" role="tablist" aria-label="道具箱タブ">
+          <button class="toolbox-tab is-active" id="toolboxTabPaint" type="button" role="tab" aria-selected="true" aria-controls="toolboxPaint" data-toolbox-tab="paint">ペン</button>
+          <button class="toolbox-tab" id="toolboxTabFilm" type="button" role="tab" aria-selected="false" aria-controls="toolboxFilm" data-toolbox-tab="film">フィルム</button>
+          <button class="toolbox-tab" id="toolboxTabImage" type="button" role="tab" aria-selected="false" aria-controls="toolboxImage" data-toolbox-tab="image">素材</button>
+          <button class="toolbox-tab" id="toolboxTabSound" type="button" role="tab" aria-selected="false" aria-controls="toolboxSound" data-toolbox-tab="sound">音</button>
+        </div>
+
+        <div class="toolbox-content">
+          <div class="toolbox-page is-active" id="toolboxPaint" role="tabpanel" aria-labelledby="toolboxTabPaint" data-toolbox-page="paint">
+            <h2>ペン</h2>
+            <p>ペン、消しゴム、色、ペン先、模様、図形、紙色などをここへまとめる予定です。</p>
+          </div>
+
+          <div class="toolbox-page" id="toolboxFilm" role="tabpanel" aria-labelledby="toolboxTabFilm" data-toolbox-page="film" hidden>
+            <h2>フィルム</h2>
+            <p>ページ削除、複製、コピー、貼り付け、並び替えなどを置く予定です。</p>
+          </div>
+
+          <div class="toolbox-page" id="toolboxImage" role="tabpanel" aria-labelledby="toolboxTabImage" data-toolbox-page="image" hidden>
+            <h2>素材</h2>
+            <p>画像読み込みや、うごメモ調の減色変換を置く予定です。</p>
+          </div>
+
+          <div class="toolbox-page" id="toolboxSound" role="tabpanel" aria-labelledby="toolboxTabSound" data-toolbox-page="sound" hidden>
+            <h2>音</h2>
+            <p>BGMとSEの登録、削除、確認再生を置く予定です。</p>
+          </div>
+        </div>
+      </section>
     </div>
 
     <script src="main.js"></script>

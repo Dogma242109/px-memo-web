@@ -66,6 +66,7 @@ button:disabled:active {
   width: max-content;
   min-width: min(1260px, calc(100vw - 32px));
   margin: 16px auto;
+  position: relative;
 }
 
 .app-header {
@@ -486,6 +487,99 @@ button:disabled:active {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.toolbox-toggle {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  min-width: 58px;
+  height: 58px;
+  min-height: 58px;
+  padding: 0;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.toolbox-toggle img {
+  width: 36px;
+  height: 36px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+.toolbox-toggle:hover,
+.toolbox-toggle.is-open {
+  background: var(--panel-strong);
+  border-color: var(--accent-strong);
+}
+
+.toolbox-panel {
+  position: fixed;
+  right: 24px;
+  bottom: 94px;
+  z-index: 19;
+  width: min(560px, calc(100vw - 48px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.toolbox-panel[hidden] {
+  display: none;
+}
+
+.toolbox-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-strong);
+}
+
+.toolbox-tab {
+  min-height: 44px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+
+.toolbox-tab:last-child {
+  border-right: 0;
+}
+
+.toolbox-tab.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.toolbox-content {
+  min-height: 220px;
+  padding: 16px;
+}
+
+.toolbox-page {
+  display: grid;
+  gap: 10px;
+}
+
+.toolbox-page h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.toolbox-page p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
 }
 
 @media (max-width: 920px) {

@@ -2,7 +2,7 @@ const CANVAS_WIDTH = 310;
 const CANVAS_HEIGHT = 230;
 const MAX_HISTORY = 128;
 
-// 画面上の操作部品を取得する。
+// DOM references used by the editor.
 const canvas = document.querySelector("#drawingCanvas");
 const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
@@ -24,8 +24,12 @@ const toolButtons = [...document.querySelectorAll(".tool-button")];
 const colorButtons = [...document.querySelectorAll(".color-swatch")];
 const brushButtons = [...document.querySelectorAll(".brush-option")];
 const patternButtons = [...document.querySelectorAll(".pattern-option")];
+const toolboxToggle = document.querySelector("#toolboxToggle");
+const toolboxPanel = document.querySelector("#toolboxPanel");
+const toolboxTabs = [...document.querySelectorAll(".toolbox-tab")];
+const toolboxPages = [...document.querySelectorAll(".toolbox-page")];
 
-// アプリ全体の現在状態。
+// Current editor state.
 let currentTool = "pen";
 let currentColor = "#000000";
 let displayScale = Number(zoomSelect.value);
@@ -35,7 +39,6 @@ let activeFrameIndex = 0;
 let playbackTimer = null;
 let frames = [createBlankFrame()];
 
-// Canvas API側でも拡大縮小時にぼけないようにしておく。
 ctx.imageSmoothingEnabled = false;
 updateCanvasScale();
 loadFrame(0);
@@ -43,7 +46,6 @@ renderFrames();
 updateHistoryButtons();
 
 toolButtons.forEach((button) => {
-  // ペン/消しゴムの切り替え。
   button.addEventListener("click", () => {
     currentTool = button.dataset.tool;
     toolButtons.forEach((item) => {
@@ -59,7 +61,6 @@ sizeInput.addEventListener("input", () => {
 });
 
 colorButtons.forEach((button) => {
-  // 6色パレットの切り替え。
   button.addEventListener("click", () => {
     currentColor = button.dataset.color;
     colorButtons.forEach((item) => {
@@ -71,7 +72,6 @@ colorButtons.forEach((button) => {
 });
 
 brushButtons.forEach((button) => {
-  // ペン先は見た目ボタンで選び、内部的には隠しselectの値に反映する。
   button.addEventListener("click", () => {
     brushSelect.value = button.dataset.brush;
     updateOptionButtons(brushButtons, button);
@@ -79,10 +79,19 @@ brushButtons.forEach((button) => {
 });
 
 patternButtons.forEach((button) => {
-  // 模様もペン先と同じく、見た目ボタンから隠しselectへ反映する。
   button.addEventListener("click", () => {
     patternSelect.value = button.dataset.pattern;
     updateOptionButtons(patternButtons, button);
+  });
+});
+
+toolboxToggle.addEventListener("click", () => {
+  setToolboxOpen(toolboxPanel.hidden);
+});
+
+toolboxTabs.forEach((tab) => {
+  tab.addEventListener("click", () => {
+    selectToolboxTab(tab.dataset.toolboxTab);
   });
 });
 
@@ -92,7 +101,6 @@ zoomSelect.addEventListener("change", () => {
 });
 
 canvas.addEventListener("pointerdown", (event) => {
-  // 描き始める直前の状態をUndo履歴に積む。
   stopPlayback();
   pushUndoState();
   canvas.setPointerCapture(event.pointerId);
@@ -145,14 +153,8 @@ playButton.addEventListener("click", () => {
 });
 
 stopButton.addEventListener("click", stopPlayback);
-
-undoButton.addEventListener("click", () => {
-  undo();
-});
-
-redoButton.addEventListener("click", () => {
-  redo();
-});
+undoButton.addEventListener("click", undo);
+redoButton.addEventListener("click", redo);
 
 clearFrameButton.addEventListener("click", () => {
   stopPlayback();
@@ -170,7 +172,6 @@ speedSelect.addEventListener("change", () => {
 });
 
 document.addEventListener("keydown", (event) => {
-  // 入力欄ではブラウザ標準のCtrl+Zを優先する。
   if (isEditableTarget(event.target)) {
     return;
   }
@@ -187,10 +188,13 @@ document.addEventListener("keydown", (event) => {
     event.preventDefault();
     redo();
   }
+
+  if (event.key === "Escape" && !toolboxPanel.hidden) {
+    setToolboxOpen(false);
+  }
 });
 
 function createBlankFrame() {
-  // 新しいフレームは白紙キャンバスの画像として作る。
   const scratch = document.createElement("canvas");
   scratch.width = CANVAS_WIDTH;
   scratch.height = CANVAS_HEIGHT;
@@ -199,11 +203,19 @@ function createBlankFrame() {
   scratchCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   return {
-    id: crypto.randomUUID(),
+    id: createFrameId(),
     image: scratch.toDataURL("image/png"),
     undoStack: [],
     redoStack: [],
   };
+}
+
+function createFrameId() {
+  if (globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `frame-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function fillCanvasWhite() {
@@ -212,7 +224,6 @@ function fillCanvasWhite() {
 }
 
 function getCanvasPoint(event) {
-  // CSSで拡大表示しているので、画面座標を内部310x230座標へ変換する。
   const rect = canvas.getBoundingClientRect();
   const x = Math.floor(((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH);
   const y = Math.floor(((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT);
@@ -228,7 +239,6 @@ function drawPoint(point) {
 }
 
 function drawLine(from, to) {
-  // ポインタ移動の間を整数座標で埋めて、線が途切れないようにする。
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const steps = Math.max(Math.abs(dx), Math.abs(dy));
@@ -246,7 +256,6 @@ function drawLine(from, to) {
 }
 
 function paintBrush(x, y) {
-  // ペン先形状と模様を組み合わせて、1点ぶんのブラシを描く。
   const size = Number(sizeInput.value);
   const color = getDrawColor();
   const brush = brushSelect.value;
@@ -307,7 +316,6 @@ function paintRoundMask(x, y, size, color, pattern) {
 }
 
 function paintMaskPixels(startX, startY, size, color, pattern, isInsideShape) {
-  // ペン先形状の中で、さらに模様パターンが塗る場所だけ1pxずつ描画する。
   ctx.fillStyle = color;
 
   for (let maskY = 0; maskY < size; maskY += 1) {
@@ -323,8 +331,7 @@ function paintMaskPixels(startX, startY, size, color, pattern, isInsideShape) {
 }
 
 function shouldPaintPattern(pattern, x, y) {
-  // 模様はペン位置ではなくキャンバス絶対座標で決める。
-  // こうすると同じ場所をなぞっても点々や市松の位相がズレない。
+  // Patterns are based on canvas coordinates, so repeated strokes keep the same phase.
   const normalizedX = positiveModulo(x, 2);
   const normalizedY = positiveModulo(y, 2);
 
@@ -414,7 +421,6 @@ function loadFrame(index) {
 }
 
 function pushUndoState() {
-  // 現在フレームごとにUndo/Redo履歴を持つ。
   const frame = frames[activeFrameIndex];
   frame.undoStack.push(canvas.toDataURL("image/png"));
 
@@ -477,7 +483,6 @@ function updateHistoryButtons() {
 }
 
 function renderFrames() {
-  // フレーム一覧を現在のframes配列から作り直す。
   framesList.replaceChildren();
 
   frames.forEach((frame, index) => {
@@ -526,4 +531,26 @@ function stopPlayback() {
   window.clearInterval(playbackTimer);
   playbackTimer = null;
   playButton.classList.remove("is-playing");
+}
+
+function setToolboxOpen(isOpen) {
+  toolboxPanel.hidden = !isOpen;
+  toolboxPanel.classList.toggle("is-open", isOpen);
+  toolboxToggle.classList.toggle("is-open", isOpen);
+  toolboxToggle.setAttribute("aria-expanded", String(isOpen));
+  toolboxToggle.setAttribute("aria-label", isOpen ? "道具箱を閉じる" : "道具箱を開く");
+}
+
+function selectToolboxTab(tabName) {
+  toolboxTabs.forEach((tab) => {
+    const isActive = tab.dataset.toolboxTab === tabName;
+    tab.classList.toggle("is-active", isActive);
+    tab.setAttribute("aria-selected", String(isActive));
+  });
+
+  toolboxPages.forEach((page) => {
+    const isActive = page.dataset.toolboxPage === tabName;
+    page.classList.toggle("is-active", isActive);
+    page.hidden = !isActive;
+  });
 }
