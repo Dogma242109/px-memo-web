@@ -1,12 +1,12 @@
 :root {
   /* 画面全体で使う色。アプリの雰囲気を変える時はまずここを見る。 */
   color-scheme: light;
-  --bg: #f6f5f1;
-  --panel: #ffffff;
-  --panel-strong: #ece7dc;
+  --bg: #c5dbd4;
+  --panel: #fbfdfb;
+  --panel-strong: #e2eee9;
   --ink: #1c1b18;
   --muted: #68645c;
-  --line: #cfc8b8;
+  --line: #9fb8b0;
   --accent: #23736f;
   --accent-strong: #174f4c;
   --danger: #b34735;
