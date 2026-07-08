@@ -380,17 +380,47 @@ button:disabled:active {
   background-size: 16px 16px;
 }
 
-#drawingCanvas {
+.canvas-stack {
+  position: relative;
+  width: 930px;
+  aspect-ratio: 310 / 230;
+  border: 1px solid #292621;
+  background: #fff;
+}
+
+#onionCanvas,
+#drawingCanvas,
+#previewCanvas {
   /* 内部解像度310x230を、CSSで整数倍表示する。 */
   width: 930px;
   height: auto;
   aspect-ratio: 310 / 230;
   max-width: none;
-  border: 1px solid #292621;
-  background: #fff;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   touch-action: none;
+}
+
+#onionCanvas {
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+#drawingCanvas {
+  position: relative;
+  display: block;
+  z-index: 1;
+  background: transparent;
+}
+
+#previewCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: transparent;
+  pointer-events: none;
 }
 
 .playback-bar {
@@ -582,13 +612,125 @@ button:disabled:active {
   line-height: 1.7;
 }
 
+.toolbox-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.toolbox-frame-strip {
+  display: flex;
+  gap: 8px;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 2px 2px 10px;
+  scrollbar-width: thin;
+}
+
+.toolbox-frame-item {
+  display: grid;
+  gap: 5px;
+  flex: 0 0 auto;
+  width: 82px;
+  min-width: 82px;
+  padding: 6px;
+  text-align: center;
+}
+
+.toolbox-frame-item.is-active {
+  border-color: var(--accent);
+  outline: 2px solid rgba(35, 115, 111, 0.22);
+}
+
+.toolbox-frame-thumb {
+  width: 66px;
+  height: 50px;
+  border: 1px solid var(--line);
+  background: #fff;
+  image-rendering: pixelated;
+}
+
+.toolbox-frame-number {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.toolbox-grid button {
+  min-height: 42px;
+}
+
+.toolbox-tool-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.toolbox-tool-row button {
+  min-height: 42px;
+}
+
+.toolbox-tool-row button.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.shape-type-control {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.shape-type-control select {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.toggle-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+}
+
+.toggle-line input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.danger-button {
+  border-color: rgba(179, 71, 53, 0.45);
+  color: var(--danger);
+}
+
+.danger-button:hover {
+  border-color: var(--danger);
+}
+
+.toolbox-note {
+  min-height: 1.7em;
+}
+
 @media (max-width: 920px) {
   .workspace {
     grid-template-columns: 1fr;
   }
 
-  .tool-rail,
-  .side-stack {
+  .tool-rail {
     width: min(100%, 930px);
   }
 
@@ -599,5 +741,49 @@ button:disabled:active {
 
   .canvas-stage {
     min-height: auto;
+  }
+}
+
+@media (min-width: 921px) and (max-width: 1500px) {
+  .workspace {
+    grid-template-columns: 150px max-content;
+  }
+
+  .side-stack {
+    position: fixed;
+    top: 16px;
+    right: 0;
+    z-index: 18;
+    width: 360px;
+    max-height: calc(100vh - 32px);
+    padding: 0 12px 0 0;
+    transform: translateX(calc(100% - 18px));
+    transition: transform 160ms ease, opacity 160ms ease;
+    opacity: 0.45;
+  }
+
+  .side-stack::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: -1px;
+    width: 18px;
+    border: 1px solid var(--line);
+    border-right: 0;
+    border-radius: 8px 0 0 8px;
+    background: var(--accent);
+    box-shadow: var(--shadow);
+  }
+
+  .side-stack:hover,
+  .side-stack:focus-within {
+    transform: translateX(0);
+    opacity: 1;
+  }
+
+  .side-stack .frames-pane,
+  .side-stack .layers-pane {
+    max-height: calc(100vh - 32px);
   }
 }

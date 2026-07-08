@@ -104,7 +104,11 @@
         <!-- Center: drawing canvas and playback controls. -->
         <section class="left-pane" aria-label="描画エリア">
           <div class="canvas-stage">
-            <canvas id="drawingCanvas" width="310" height="230" aria-label="描画キャンバス"></canvas>
+            <div class="canvas-stack">
+              <canvas id="onionCanvas" width="310" height="230" aria-hidden="true"></canvas>
+              <canvas id="drawingCanvas" width="310" height="230" aria-label="描画キャンバス"></canvas>
+              <canvas id="previewCanvas" width="310" height="230" aria-hidden="true"></canvas>
+            </div>
           </div>
 
           <div class="playback-bar" aria-label="再生操作">
@@ -174,25 +178,64 @@
 
       <section class="toolbox-panel" id="toolboxPanel" aria-label="道具箱" hidden>
         <div class="toolbox-tabs" role="tablist" aria-label="道具箱タブ">
-          <button class="toolbox-tab is-active" id="toolboxTabPaint" type="button" role="tab" aria-selected="true" aria-controls="toolboxPaint" data-toolbox-tab="paint">ペン</button>
-          <button class="toolbox-tab" id="toolboxTabFilm" type="button" role="tab" aria-selected="false" aria-controls="toolboxFilm" data-toolbox-tab="film">フィルム</button>
+          <button class="toolbox-tab is-active" id="toolboxTabFrame" type="button" role="tab" aria-selected="true" aria-controls="toolboxFrame" data-toolbox-tab="frame">フレーム</button>
+          <button class="toolbox-tab" id="toolboxTabEdit" type="button" role="tab" aria-selected="false" aria-controls="toolboxEdit" data-toolbox-tab="edit">編集</button>
           <button class="toolbox-tab" id="toolboxTabImage" type="button" role="tab" aria-selected="false" aria-controls="toolboxImage" data-toolbox-tab="image">素材</button>
-          <button class="toolbox-tab" id="toolboxTabSound" type="button" role="tab" aria-selected="false" aria-controls="toolboxSound" data-toolbox-tab="sound">音</button>
+          <button class="toolbox-tab" id="toolboxTabSound" type="button" role="tab" aria-selected="false" aria-controls="toolboxSound" data-toolbox-tab="sound">音声</button>
         </div>
 
         <div class="toolbox-content">
-          <div class="toolbox-page is-active" id="toolboxPaint" role="tabpanel" aria-labelledby="toolboxTabPaint" data-toolbox-page="paint">
-            <h2>ペン</h2>
-            <p>ペン、消しゴム、色、ペン先、模様、図形、紙色などをここへまとめる予定です。</p>
+          <div class="toolbox-page is-active" id="toolboxFrame" role="tabpanel" aria-labelledby="toolboxTabFrame" data-toolbox-page="frame">
+            <h2>フレーム</h2>
+            <div class="toolbox-frame-strip" id="toolboxFrameStrip" aria-label="現在のフレーム一覧"></div>
+            <div class="toolbox-grid" aria-label="フレーム操作">
+              <button id="duplicateFrameButton" type="button">複製</button>
+              <button id="copyFrameButton" type="button">コピー</button>
+              <button id="pasteFrameButton" type="button" disabled>貼り付け</button>
+              <button id="deleteFrameButton" class="danger-button" type="button">削除</button>
+            </div>
+            <p class="toolbox-note" id="frameActionStatus">選択中のフレームに対して操作します。</p>
           </div>
 
-          <div class="toolbox-page" id="toolboxFilm" role="tabpanel" aria-labelledby="toolboxTabFilm" data-toolbox-page="film" hidden>
-            <h2>フィルム</h2>
-            <p>ページ削除、複製、コピー、貼り付け、並び替えなどを置く予定です。</p>
+          <div class="toolbox-page" id="toolboxEdit" role="tabpanel" aria-labelledby="toolboxTabEdit" data-toolbox-page="edit" hidden>
+            <h2>編集</h2>
+            <div class="toolbox-grid" aria-label="編集操作">
+              <button id="selectionModeButton" type="button" aria-pressed="false">範囲選択</button>
+              <button id="deleteSelectionButton" type="button" disabled>選択削除</button>
+              <button id="transformSelectionButton" type="button" disabled>変形</button>
+              <button id="clearSelectionButton" type="button" disabled>選択解除</button>
+            </div>
+            <div class="toolbox-tool-row">
+              <label class="toggle-line">
+                <input id="onionSkinToggle" type="checkbox">
+                <span>オニオンスキン</span>
+              </label>
+              <label class="shape-type-control">
+                <span>枚数</span>
+                <select id="onionSkinCountSelect">
+                  <option value="1" selected>1枚</option>
+                  <option value="2">2枚</option>
+                  <option value="3">3枚</option>
+                  <option value="4">4枚</option>
+                </select>
+              </label>
+            </div>
+            <p class="toolbox-note" id="selectionStatus">範囲選択をONにすると、投げ縄で選択できます。</p>
           </div>
 
           <div class="toolbox-page" id="toolboxImage" role="tabpanel" aria-labelledby="toolboxTabImage" data-toolbox-page="image" hidden>
             <h2>素材</h2>
+            <div class="toolbox-tool-row">
+              <button id="shapeModeButton" type="button" aria-pressed="false">図形</button>
+              <label class="shape-type-control">
+                <span>図形</span>
+                <select id="shapeTypeSelect">
+                  <option value="line">直線</option>
+                  <option value="rect">四角</option>
+                  <option value="ellipse">丸</option>
+                </select>
+              </label>
+            </div>
             <p>画像読み込みや、うごメモ調の減色変換を置く予定です。</p>
           </div>
 
