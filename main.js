@@ -487,10 +487,7 @@ function renderOnionSkin() {
         return;
       }
 
-      onionCtx.save();
-      onionCtx.globalAlpha = getOnionOpacity(distance, onionCount);
-      onionCtx.drawImage(onionImage, 0, 0);
-      onionCtx.restore();
+      drawOnionImage(onionImage, getOnionOpacity(distance, onionCount));
     });
     onionImage.src = image;
   });
@@ -498,6 +495,33 @@ function renderOnionSkin() {
 
 function clearOnionSkin() {
   onionCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+function drawOnionImage(image, opacity) {
+  const scratch = document.createElement("canvas");
+  scratch.width = CANVAS_WIDTH;
+  scratch.height = CANVAS_HEIGHT;
+  const scratchCtx = scratch.getContext("2d");
+  scratchCtx.drawImage(image, 0, 0);
+
+  const imageData = scratchCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  const pixels = imageData.data;
+
+  for (let index = 0; index < pixels.length; index += 4) {
+    const red = pixels[index];
+    const green = pixels[index + 1];
+    const blue = pixels[index + 2];
+    const isWhite = red > 245 && green > 245 && blue > 245;
+
+    if (isWhite) {
+      pixels[index + 3] = 0;
+    } else {
+      pixels[index + 3] = Math.round(pixels[index + 3] * opacity);
+    }
+  }
+
+  scratchCtx.putImageData(imageData, 0, 0);
+  onionCtx.drawImage(scratch, 0, 0);
 }
 
 function getOnionOpacity(distance, onionCount) {
