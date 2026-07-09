@@ -47,6 +47,12 @@ const clearSelectionButton = document.querySelector("#clearSelectionButton");
 const selectionStatus = document.querySelector("#selectionStatus");
 const onionSkinToggle = document.querySelector("#onionSkinToggle");
 const onionSkinCountSelect = document.querySelector("#onionSkinCountSelect");
+const transformSelectionButton = document.querySelector("#transformSelectionButton");
+const transformControls = document.querySelector("#transformControls");
+const transformScaleInput = document.querySelector("#transformScaleInput");
+const transformRotationSelect = document.querySelector("#transformRotationSelect");
+const applyTransformButton = document.querySelector("#applyTransformButton");
+const cancelTransformButton = document.querySelector("#cancelTransformButton");
 
 // Current editor state.
 let currentTool = "pen";
@@ -64,6 +70,8 @@ let shapeStartPoint = null;
 let isSelectionMode = false;
 let selectionMask = null;
 let lassoPoints = [];
+let transformState = null;
+let transformDragStart = null;
 let frames = [createBlankFrame()];
 
 ctx.imageSmoothingEnabled = false;
@@ -132,6 +140,11 @@ selectionModeButton.addEventListener("click", () => {
 
 deleteSelectionButton.addEventListener("click", deleteSelection);
 clearSelectionButton.addEventListener("click", clearSelection);
+transformSelectionButton.addEventListener("click", startTransform);
+transformScaleInput.addEventListener("input", updateTransformFromControls);
+transformRotationSelect.addEventListener("change", updateTransformFromControls);
+applyTransformButton.addEventListener("click", applyTransform);
+cancelTransformButton.addEventListener("click", cancelTransform);
 
 onionSkinToggle.addEventListener("change", renderOnionSkin);
 onionSkinCountSelect.addEventListener("change", renderOnionSkin);
@@ -156,6 +169,15 @@ canvas.addEventListener("pointerdown", (event) => {
   canvas.setPointerCapture(event.pointerId);
   isDrawing = true;
   lastPoint = getCanvasPoint(event);
+
+  if (transformState) {
+    transformDragStart = {
+      pointer: lastPoint,
+      x: transformState.x,
+      y: transformState.y,
+    };
+    return;
+  }
 
   if (isSelectionMode) {
     shapeStartPoint = lastPoint;
@@ -186,6 +208,14 @@ canvas.addEventListener("pointermove", (event) => {
   }
 
   const nextPoint = getCanvasPoint(event);
+
+  if (transformState && transformDragStart) {
+    transformState.x = transformDragStart.x + (nextPoint.x - transformDragStart.pointer.x);
+    transformState.y = transformDragStart.y + (nextPoint.y - transformDragStart.pointer.y);
+    drawTransformPreview();
+    lastPoint = nextPoint;
+    return;
+  }
 
   if (isSelectionMode) {
     if (isShapeMode && shapeStartPoint) {
@@ -221,9 +251,11 @@ canvas.addEventListener("pointerleave", () => {
   lastPoint = null;
   shapeStartPoint = null;
   lassoPoints = [];
+  transformDragStart = null;
 });
 
 addFrameButton.addEventListener("click", () => {
+  cancelTransformBeforeNavigation();
   saveCurrentFrame();
   recordProjectState();
   frames.splice(activeFrameIndex + 1, 0, createBlankFrame());
@@ -236,6 +268,7 @@ playButton.addEventListener("click", () => {
     return;
   }
 
+  cancelTransformBeforeNavigation();
   saveCurrentFrame();
   clearOnionSkin();
   playButton.classList.add("is-playing");
@@ -736,6 +769,202 @@ function setSelectionStatus(message) {
   selectionStatus.textContent = message;
 }
 
+function startTransform() {
+  if (transformState) {
+    cancelTransform();
+    return;
+  }
+
+  stopPlayback();
+  saveCurrentFrame();
+  pushUndoState();
+
+  const targetBounds = getSelectionBounds() ?? {
+    left: 0,
+    top: 0,
+    right: CANVAS_WIDTH - 1,
+    bottom: CANVAS_HEIGHT - 1,
+  };
+  const sourceCanvas = extractTransformSource(targetBounds);
+
+  transformState = {
+    sourceCanvas,
+    originalImage: frames[activeFrameIndex].image,
+    x: targetBounds.left,
+    y: targetBounds.top,
+    scale: 1,
+    rotation: 0,
+  };
+
+  clearTransformSource(targetBounds);
+  saveCurrentFrameQuietly();
+  clearSelection("変形中です。ドラッグで移動できます。");
+  transformControls.hidden = false;
+  transformSelectionButton.classList.add("is-active");
+  transformScaleInput.value = "100";
+  transformRotationSelect.value = "0";
+  drawTransformPreview();
+}
+
+function getSelectionBounds() {
+  if (!selectionMask) {
+    return null;
+  }
+
+  let left = CANVAS_WIDTH;
+  let top = CANVAS_HEIGHT;
+  let right = -1;
+  let bottom = -1;
+
+  for (let y = 0; y < CANVAS_HEIGHT; y += 1) {
+    for (let x = 0; x < CANVAS_WIDTH; x += 1) {
+      if (!isPointInSelection(x, y)) {
+        continue;
+      }
+
+      left = Math.min(left, x);
+      top = Math.min(top, y);
+      right = Math.max(right, x);
+      bottom = Math.max(bottom, y);
+    }
+  }
+
+  if (right < left || bottom < top) {
+    return null;
+  }
+
+  return { left, top, right, bottom };
+}
+
+function extractTransformSource(bounds) {
+  const width = bounds.right - bounds.left + 1;
+  const height = bounds.bottom - bounds.top + 1;
+  const sourceCanvas = document.createElement("canvas");
+  sourceCanvas.width = width;
+  sourceCanvas.height = height;
+  const sourceCtx = sourceCanvas.getContext("2d");
+  sourceCtx.imageSmoothingEnabled = false;
+  const sourceImage = ctx.getImageData(bounds.left, bounds.top, width, height);
+
+  if (selectionMask) {
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const canvasX = bounds.left + x;
+        const canvasY = bounds.top + y;
+
+        if (isPointInSelection(canvasX, canvasY)) {
+          continue;
+        }
+
+        sourceImage.data[(y * width + x) * 4 + 3] = 0;
+      }
+    }
+  }
+
+  sourceCtx.putImageData(sourceImage, 0, 0);
+  return sourceCanvas;
+}
+
+function clearTransformSource(bounds) {
+  ctx.fillStyle = "#ffffff";
+
+  if (!selectionMask) {
+    ctx.fillRect(bounds.left, bounds.top, bounds.right - bounds.left + 1, bounds.bottom - bounds.top + 1);
+    return;
+  }
+
+  for (let y = bounds.top; y <= bounds.bottom; y += 1) {
+    for (let x = bounds.left; x <= bounds.right; x += 1) {
+      if (isPointInSelection(x, y)) {
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+}
+
+function updateTransformFromControls() {
+  if (!transformState) {
+    return;
+  }
+
+  transformState.scale = Number(transformScaleInput.value) / 100;
+  transformState.rotation = Number(transformRotationSelect.value);
+  drawTransformPreview();
+}
+
+function drawTransformPreview() {
+  if (!transformState) {
+    return;
+  }
+
+  clearPreviewCanvas();
+  const width = transformState.sourceCanvas.width * transformState.scale;
+  const height = transformState.sourceCanvas.height * transformState.scale;
+
+  previewCtx.save();
+  previewCtx.imageSmoothingEnabled = false;
+  previewCtx.translate(transformState.x + width / 2, transformState.y + height / 2);
+  previewCtx.rotate((Math.PI * transformState.rotation) / 180);
+  previewCtx.drawImage(transformState.sourceCanvas, -width / 2, -height / 2, width, height);
+  previewCtx.restore();
+}
+
+function applyTransform() {
+  if (!transformState) {
+    return;
+  }
+
+  drawTransformOnto(ctx);
+  saveCurrentFrame();
+  finishTransform("変形を確定しました。");
+}
+
+function cancelTransform() {
+  if (!transformState) {
+    return;
+  }
+
+  drawImageUrl(transformState.originalImage, () => {
+    saveCurrentFrameQuietly();
+    finishTransform("変形をキャンセルしました。");
+  });
+}
+
+function cancelTransformBeforeNavigation() {
+  if (!transformState) {
+    return;
+  }
+
+  const originalImage = transformState.originalImage;
+  finishTransform("変形を中断しました。");
+  drawImageUrl(originalImage, () => {
+    saveCurrentFrameQuietly();
+    updateHistoryButtons();
+  });
+}
+
+function finishTransform(message) {
+  transformState = null;
+  transformDragStart = null;
+  transformControls.hidden = true;
+  transformSelectionButton.classList.remove("is-active");
+  clearPreviewCanvas();
+  updateHistoryButtons();
+  setSelectionStatus(message);
+}
+
+function drawTransformOnto(targetCtx) {
+  const width = transformState.sourceCanvas.width * transformState.scale;
+  const height = transformState.sourceCanvas.height * transformState.scale;
+
+  targetCtx.save();
+  targetCtx.imageSmoothingEnabled = false;
+  targetCtx.translate(transformState.x + width / 2, transformState.y + height / 2);
+  targetCtx.rotate((Math.PI * transformState.rotation) / 180);
+  targetCtx.drawImage(transformState.sourceCanvas, -width / 2, -height / 2, width, height);
+  targetCtx.restore();
+}
+
 function paintBrush(x, y) {
   const size = Number(sizeInput.value);
   const color = getDrawColor();
@@ -881,6 +1110,13 @@ function updateCanvasScale() {
 }
 
 function finishDrawing() {
+  if (isDrawing && transformState) {
+    isDrawing = false;
+    lastPoint = null;
+    transformDragStart = null;
+    return;
+  }
+
   if (isDrawing && isSelectionMode) {
     finishSelectionGesture();
     isDrawing = false;
@@ -907,12 +1143,15 @@ function finishDrawing() {
 }
 
 function cancelDrawing() {
-  clearPreviewCanvas();
-  drawSelectionOverlay();
+  if (!transformState) {
+    clearPreviewCanvas();
+    drawSelectionOverlay();
+  }
   isDrawing = false;
   lastPoint = null;
   shapeStartPoint = null;
   lassoPoints = [];
+  transformDragStart = null;
 }
 
 function saveCurrentFrame() {
@@ -1027,6 +1266,7 @@ function renderFrames() {
     button.classList.toggle("is-active", index === activeFrameIndex);
     button.addEventListener("click", () => {
       stopPlayback();
+      cancelTransformBeforeNavigation();
       saveCurrentFrame();
       loadFrame(index);
       renderFrames();
@@ -1059,6 +1299,7 @@ function renderToolboxFrameStrip() {
     button.classList.toggle("is-active", index === activeFrameIndex);
     button.addEventListener("click", () => {
       stopPlayback();
+      cancelTransformBeforeNavigation();
       saveCurrentFrame();
       loadFrame(index);
       renderFrames();
@@ -1159,6 +1400,7 @@ function restoreProjectSnapshot(snapshot) {
 
 function duplicateCurrentFrame() {
   stopPlayback();
+  cancelTransformBeforeNavigation();
   saveCurrentFrame();
   recordProjectState();
 
@@ -1171,6 +1413,7 @@ function duplicateCurrentFrame() {
 }
 
 function copyCurrentFrame() {
+  cancelTransformBeforeNavigation();
   saveCurrentFrame();
   copiedFrameImage = frames[activeFrameIndex].image;
   updateFrameActionButtons();
@@ -1183,6 +1426,7 @@ function pasteCopiedFrame() {
   }
 
   stopPlayback();
+  cancelTransformBeforeNavigation();
   saveCurrentFrame();
   recordProjectState();
   frames[activeFrameIndex].image = copiedFrameImage;
@@ -1195,6 +1439,7 @@ function pasteCopiedFrame() {
 
 function deleteCurrentFrame() {
   stopPlayback();
+  cancelTransformBeforeNavigation();
   saveCurrentFrame();
   recordProjectState();
 
