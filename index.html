@@ -61,6 +61,9 @@
             <button class="brush-option" type="button" data-brush="round" aria-label="丸" aria-pressed="false">
               <span class="brush-preview brush-preview-round"></span>
             </button>
+            <button class="brush-option" type="button" data-brush="bucket" aria-label="塗りつぶし" aria-pressed="false">
+              <img class="brush-preview brush-preview-bucket" src="images/baketsu.png" alt="">
+            </button>
           </fieldset>
 
           <fieldset class="pattern-picker" aria-label="模様">
@@ -137,6 +140,7 @@
             <option value="square" selected>四角</option>
             <option value="plus">十字</option>
             <option value="round">丸</option>
+            <option value="bucket">塗りつぶし</option>
           </select>
           <select id="patternSelect" class="visually-hidden" aria-hidden="true" tabindex="-1">
             <option value="solid" selected>ベタ</option>
@@ -165,9 +169,7 @@
             <div class="frames-header">
               <h2>レイヤー</h2>
             </div>
-            <div class="layer-list">
-              <button class="layer-item is-active" type="button">1</button>
-            </div>
+            <div class="layer-list" id="layersList"></div>
           </section>
         </aside>
       </main>

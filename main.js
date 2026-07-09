@@ -1,6 +1,7 @@
 const CANVAS_WIDTH = 310;
 const CANVAS_HEIGHT = 230;
 const MAX_HISTORY = 128;
+const LAYER_COUNT = 3;
 const PREVIEW_COLOR = "rgba(35, 115, 111, 0.75)";
 
 // DOM references used by the editor.
@@ -10,6 +11,10 @@ const onionCanvas = document.querySelector("#onionCanvas");
 const onionCtx = onionCanvas.getContext("2d");
 const previewCanvas = document.querySelector("#previewCanvas");
 const previewCtx = previewCanvas.getContext("2d");
+const activeLayerCanvas = document.createElement("canvas");
+activeLayerCanvas.width = CANVAS_WIDTH;
+activeLayerCanvas.height = CANVAS_HEIGHT;
+const activeLayerCtx = activeLayerCanvas.getContext("2d", { willReadFrequently: true });
 
 const sizeInput = document.querySelector("#sizeInput");
 const sizeOutput = document.querySelector("#sizeOutput");
@@ -18,6 +23,7 @@ const patternSelect = document.querySelector("#patternSelect");
 const zoomSelect = document.querySelector("#zoomSelect");
 const speedSelect = document.querySelector("#speedSelect");
 const framesList = document.querySelector("#framesList");
+const layersList = document.querySelector("#layersList");
 const addFrameButton = document.querySelector("#addFrameButton");
 const playButton = document.querySelector("#playButton");
 const stopButton = document.querySelector("#stopButton");
@@ -55,6 +61,9 @@ let displayScale = Number(zoomSelect.value);
 let isDrawing = false;
 let lastPoint = null;
 let activeFrameIndex = 0;
+let activeLayerIndex = 0;
+let historyActionId = 0;
+let frameLoadToken = 0;
 let playbackTimer = null;
 let copiedFrameImage = null;
 let projectUndoStack = [];
@@ -69,9 +78,11 @@ let frames = [createBlankFrame()];
 ctx.imageSmoothingEnabled = false;
 onionCtx.imageSmoothingEnabled = false;
 previewCtx.imageSmoothingEnabled = false;
+activeLayerCtx.imageSmoothingEnabled = false;
 updateCanvasScale();
 loadFrame(0);
 renderFrames();
+renderLayers();
 updateHistoryButtons();
 
 toolButtons.forEach((button) => {
@@ -176,6 +187,14 @@ canvas.addEventListener("pointerdown", (event) => {
     return;
   }
 
+  if (brushSelect.value === "bucket") {
+    floodFillLayer(lastPoint.x, lastPoint.y);
+    saveCurrentFrame();
+    isDrawing = false;
+    lastPoint = null;
+    return;
+  }
+
   drawPoint(lastPoint);
   saveCurrentFrameQuietly();
 });
@@ -253,7 +272,7 @@ redoButton.addEventListener("click", redo);
 clearFrameButton.addEventListener("click", () => {
   stopPlayback();
   pushUndoState();
-  fillCanvasWhite();
+  clearActiveLayer();
   saveCurrentFrame();
   updateHistoryButtons();
 });
@@ -293,7 +312,72 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+function getNextHistoryActionId() {
+  historyActionId += 1;
+  return historyActionId;
+}
+
+function getHistoryActionId(entry) {
+  return entry?.actionId ?? 0;
+}
+
+function shouldUseFrameUndo() {
+  const frameEntry = frames[activeFrameIndex].undoStack.at(-1);
+  const projectEntry = projectUndoStack.at(-1);
+
+  if (!frameEntry) {
+    return false;
+  }
+
+  if (!projectEntry) {
+    return true;
+  }
+
+  return getHistoryActionId(frameEntry) >= getHistoryActionId(projectEntry);
+}
+
+function shouldUseFrameRedo() {
+  const frameEntry = frames[activeFrameIndex].redoStack.at(-1);
+  const projectEntry = projectRedoStack.at(-1);
+
+  if (!frameEntry) {
+    return false;
+  }
+
+  if (!projectEntry) {
+    return true;
+  }
+
+  const frameActionId = getHistoryActionId(frameEntry);
+  const projectActionId = getHistoryActionId(projectEntry);
+
+  if (frameActionId === 0 || projectActionId === 0) {
+    return true;
+  }
+
+  return frameActionId <= projectActionId;
+}
 function createBlankFrame() {
+  const layers = Array.from({ length: LAYER_COUNT }, createBlankLayerImage);
+
+  return {
+    id: createFrameId(),
+    image: createCompositeImageSync(),
+    layers,
+    undoStack: [],
+    redoStack: [],
+  };
+}
+
+function createBlankLayerImage() {
+  const scratch = document.createElement("canvas");
+  scratch.width = CANVAS_WIDTH;
+  scratch.height = CANVAS_HEIGHT;
+
+  return scratch.toDataURL("image/png");
+}
+
+function createCompositeImageSync() {
   const scratch = document.createElement("canvas");
   scratch.width = CANVAS_WIDTH;
   scratch.height = CANVAS_HEIGHT;
@@ -301,14 +385,22 @@ function createBlankFrame() {
   scratchCtx.fillStyle = "#ffffff";
   scratchCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-  return {
-    id: createFrameId(),
-    image: scratch.toDataURL("image/png"),
-    undoStack: [],
-    redoStack: [],
-  };
+  return scratch.toDataURL("image/png");
 }
 
+function ensureFrameLayers(frame) {
+  if (!Array.isArray(frame.layers)) {
+    frame.layers = [frame.image, ...Array.from({ length: LAYER_COUNT - 1 }, createBlankLayerImage)];
+  }
+
+  while (frame.layers.length < LAYER_COUNT) {
+    frame.layers.push(createBlankLayerImage());
+  }
+
+  if (frame.layers.length > LAYER_COUNT) {
+    frame.layers = frame.layers.slice(0, LAYER_COUNT);
+  }
+}
 function createFrameId() {
   if (globalThis.crypto?.randomUUID) {
     return globalThis.crypto.randomUUID();
@@ -320,6 +412,10 @@ function createFrameId() {
 function fillCanvasWhite() {
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+}
+
+function clearActiveLayer() {
+  activeLayerCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 }
 
 function getCanvasPoint(event) {
@@ -704,12 +800,10 @@ function deleteSelection() {
 
   stopPlayback();
   pushUndoState();
-  ctx.fillStyle = "#ffffff";
-
   for (let y = 0; y < CANVAS_HEIGHT; y += 1) {
     for (let x = 0; x < CANVAS_WIDTH; x += 1) {
       if (isPointInSelection(x, y)) {
-        ctx.fillRect(x, y, 1, 1);
+        activeLayerCtx.clearRect(x, y, 1, 1);
       }
     }
   }
@@ -797,7 +891,7 @@ function paintRoundMask(x, y, size, color, pattern) {
 }
 
 function paintMaskPixels(startX, startY, size, color, pattern, isInsideShape) {
-  ctx.fillStyle = color;
+  activeLayerCtx.fillStyle = color;
 
   for (let maskY = 0; maskY < size; maskY += 1) {
     for (let maskX = 0; maskX < size; maskX += 1) {
@@ -805,12 +899,104 @@ function paintMaskPixels(startX, startY, size, color, pattern, isInsideShape) {
       const canvasY = startY + maskY;
 
       if (isInsideShape(maskX, maskY) && shouldPaintPattern(pattern, canvasX, canvasY) && isPointInSelection(canvasX, canvasY)) {
-        ctx.fillRect(canvasX, canvasY, 1, 1);
+        if (currentTool === "eraser") {
+          activeLayerCtx.clearRect(canvasX, canvasY, 1, 1);
+        } else {
+          activeLayerCtx.fillRect(canvasX, canvasY, 1, 1);
+        }
       }
     }
   }
 }
+function floodFillLayer(startX, startY) {
+  if (!isPointInSelection(startX, startY)) {
+    return;
+  }
 
+  const imageData = activeLayerCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  const pixels = imageData.data;
+  const startOffset = getPixelOffset(startX, startY);
+  const target = [
+    pixels[startOffset],
+    pixels[startOffset + 1],
+    pixels[startOffset + 2],
+    pixels[startOffset + 3],
+  ];
+  const pattern = patternSelect.value;
+  const replacement = currentTool === "eraser" ? [0, 0, 0, 0] : hexToRgba(currentColor);
+  const isSolidNoOp = currentTool !== "eraser" && pattern === "solid" && isSameRgba(target, replacement);
+  const isEraseNoOp = currentTool === "eraser" && target[3] === 0;
+
+  if (isSolidNoOp || isEraseNoOp) {
+    return;
+  }
+
+  const clear = [0, 0, 0, 0];
+  const visited = new Uint8Array(CANVAS_WIDTH * CANVAS_HEIGHT);
+  const stack = [{ x: startX, y: startY }];
+
+  while (stack.length > 0) {
+    const point = stack.pop();
+    const { x, y } = point;
+
+    if (x < 0 || y < 0 || x >= CANVAS_WIDTH || y >= CANVAS_HEIGHT) {
+      continue;
+    }
+
+    const pixelIndex = y * CANVAS_WIDTH + x;
+    if (visited[pixelIndex] || !isPointInSelection(x, y)) {
+      continue;
+    }
+
+    const offset = pixelIndex * 4;
+    if (!isPixelSameRgba(pixels, offset, target)) {
+      continue;
+    }
+
+    visited[pixelIndex] = 1;
+    const nextColor = currentTool === "eraser" || !shouldPaintPattern(pattern, x, y) ? clear : replacement;
+    pixels[offset] = nextColor[0];
+    pixels[offset + 1] = nextColor[1];
+    pixels[offset + 2] = nextColor[2];
+    pixels[offset + 3] = nextColor[3];
+
+    stack.push(
+      { x: x + 1, y },
+      { x: x - 1, y },
+      { x, y: y + 1 },
+      { x, y: y - 1 },
+    );
+  }
+
+  activeLayerCtx.putImageData(imageData, 0, 0);
+}
+function getPixelOffset(x, y) {
+  return (y * CANVAS_WIDTH + x) * 4;
+}
+
+function isPixelSameRgba(pixels, offset, rgba) {
+  return pixels[offset] === rgba[0]
+    && pixels[offset + 1] === rgba[1]
+    && pixels[offset + 2] === rgba[2]
+    && pixels[offset + 3] === rgba[3];
+}
+
+function isSameRgba(left, right) {
+  return left[0] === right[0]
+    && left[1] === right[1]
+    && left[2] === right[2]
+    && left[3] === right[3];
+}
+
+function hexToRgba(hex) {
+  const normalized = hex.replace("#", "");
+  return [
+    Number.parseInt(normalized.slice(0, 2), 16),
+    Number.parseInt(normalized.slice(2, 4), 16),
+    Number.parseInt(normalized.slice(4, 6), 16),
+    255,
+  ];
+}
 function shouldPaintPattern(pattern, x, y) {
   // Patterns are based on canvas coordinates, so repeated strokes keep the same phase.
   const normalizedX = positiveModulo(x, 2);
@@ -916,31 +1102,61 @@ function cancelDrawing() {
 }
 
 function saveCurrentFrame() {
-  frames[activeFrameIndex].image = canvas.toDataURL("image/png");
-  updateActiveThumb();
-  renderOnionSkin();
+  const frameIndex = activeFrameIndex;
+  saveActiveLayerToFrame(frameIndex);
+  renderActiveFrameComposite(frameIndex, () => {
+    if (frameIndex === activeFrameIndex) {
+      renderLayers();
+      renderOnionSkin();
+    }
+  });
 }
 
 function saveCurrentFrameQuietly() {
-  frames[activeFrameIndex].image = canvas.toDataURL("image/png");
-  updateActiveThumb();
+  const frameIndex = activeFrameIndex;
+  saveActiveLayerToFrame(frameIndex);
+  renderActiveFrameComposite(frameIndex, () => {
+    if (frameIndex === activeFrameIndex) {
+      renderLayers();
+    }
+  });
+}
+
+function saveActiveLayerToFrame(frameIndex = activeFrameIndex) {
+  const frame = frames[frameIndex];
+  ensureFrameLayers(frame);
+  frame.layers[activeLayerIndex] = activeLayerCanvas.toDataURL("image/png");
 }
 
 function loadFrame(index) {
+  const requestToken = ++frameLoadToken;
   activeFrameIndex = index;
-  const image = new Image();
-  image.addEventListener("load", () => {
-    ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-    ctx.drawImage(image, 0, 0);
-    renderOnionSkin();
-    updateHistoryButtons();
-  });
-  image.src = frames[index].image;
-}
+  const frame = frames[index];
+  ensureFrameLayers(frame);
+  activeLayerIndex = Math.min(activeLayerIndex, frame.layers.length - 1);
+  drawImageUrlToContext(frame.layers[activeLayerIndex], activeLayerCtx, () => {
+    if (requestToken !== frameLoadToken || index !== activeFrameIndex) {
+      return;
+    }
 
+    renderActiveFrameComposite(index, () => {
+      if (requestToken !== frameLoadToken || index !== activeFrameIndex) {
+        return;
+      }
+
+      renderOnionSkin();
+      renderLayers();
+      updateHistoryButtons();
+    });
+  }, true);
+}
 function pushUndoState() {
   const frame = frames[activeFrameIndex];
-  frame.undoStack.push(canvas.toDataURL("image/png"));
+  ensureFrameLayers(frame);
+  frame.undoStack.push({
+    layerIndex: activeLayerIndex,
+    image: activeLayerCanvas.toDataURL("image/png"),
+  });
 
   if (frame.undoStack.length > MAX_HISTORY) {
     frame.undoStack.shift();
@@ -953,6 +1169,7 @@ function pushUndoState() {
 
 function restoreHistory(direction) {
   const frame = frames[activeFrameIndex];
+  ensureFrameLayers(frame);
   const fromStack = direction === "undo" ? frame.undoStack : frame.redoStack;
   const toStack = direction === "undo" ? frame.redoStack : frame.undoStack;
 
@@ -960,14 +1177,31 @@ function restoreHistory(direction) {
     return;
   }
 
-  toStack.push(canvas.toDataURL("image/png"));
-  const image = fromStack.pop();
-  frame.image = image;
-  drawImageUrl(image, updateActiveThumb);
+  const state = normalizeLayerHistoryState(fromStack.pop());
+  toStack.push({
+    actionId: state.actionId,
+    layerIndex: activeLayerIndex,
+    image: frame.layers[activeLayerIndex],
+  });
+  activeLayerIndex = state.layerIndex;
+  frame.layers[activeLayerIndex] = state.image;
+  drawImageUrlToContext(state.image, activeLayerCtx, () => {
+    renderActiveFrameComposite(activeFrameIndex, renderLayers);
+  }, true);
   drawSelectionOverlay();
   updateHistoryButtons();
 }
 
+function normalizeLayerHistoryState(state) {
+  if (typeof state === "string") {
+    return {
+      layerIndex: activeLayerIndex,
+      image: state,
+    };
+  }
+
+  return state;
+}
 function undo() {
   stopPlayback();
 
@@ -982,17 +1216,16 @@ function undo() {
 function redo() {
   stopPlayback();
 
-  if (projectRedoStack.length > 0) {
-    restoreProjectHistory("redo");
-    return;
-  }
-
   if (frames[activeFrameIndex].redoStack.length > 0) {
     restoreHistory("redo");
     return;
   }
-}
 
+  if (projectRedoStack.length > 0) {
+    restoreProjectHistory("redo");
+    return;
+  }
+}
 function isEditableTarget(target) {
   if (!(target instanceof HTMLElement)) {
     return false;
@@ -1002,15 +1235,104 @@ function isEditableTarget(target) {
 }
 
 function drawImageUrl(imageUrl, afterLoad) {
+  drawImageUrlToContext(imageUrl, ctx, afterLoad, true);
+}
+
+function drawImageUrlToContext(imageUrl, targetCtx, afterLoad, shouldClear = false) {
   const image = new Image();
   image.addEventListener("load", () => {
+    if (shouldClear) {
+      targetCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
+    targetCtx.drawImage(image, 0, 0);
+    afterLoad?.();
+  });
+  image.src = imageUrl;
+}
+
+function drawFrameImageIfActive(frameIndex, imageUrl, afterLoad) {
+  const image = new Image();
+  image.addEventListener("load", () => {
+    if (frameIndex !== activeFrameIndex) {
+      return;
+    }
+
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     ctx.drawImage(image, 0, 0);
     afterLoad?.();
   });
   image.src = imageUrl;
 }
+function renderActiveFrameComposite(frameIndex = activeFrameIndex, afterLoad) {
+  const frame = frames[frameIndex];
+  renderFrameComposite(frame, (image) => {
+    frame.image = image;
+    updateActiveThumb(frameIndex);
 
+    if (frameIndex === activeFrameIndex) {
+      drawFrameImageIfActive(frameIndex, image, afterLoad);
+    } else {
+      afterLoad?.();
+    }
+  });
+}
+function renderFrameComposite(frame, afterLoad) {
+  ensureFrameLayers(frame);
+  const scratch = document.createElement("canvas");
+  scratch.width = CANVAS_WIDTH;
+  scratch.height = CANVAS_HEIGHT;
+  const scratchCtx = scratch.getContext("2d");
+  scratchCtx.fillStyle = "#ffffff";
+  scratchCtx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  drawCompositeLayer(0);
+
+  function drawCompositeLayer(index) {
+    if (index >= frame.layers.length) {
+      afterLoad?.(scratch.toDataURL("image/png"));
+      return;
+    }
+
+    const image = new Image();
+    image.addEventListener("load", () => {
+      scratchCtx.drawImage(image, 0, 0);
+      drawCompositeLayer(index + 1);
+    });
+    image.src = frame.layers[index];
+  }
+}
+
+function renderLayers() {
+  layersList.replaceChildren();
+  const frame = frames[activeFrameIndex];
+  ensureFrameLayers(frame);
+
+  [...frame.layers].map((layer, index) => ({ layer, index })).reverse().forEach(({ layer, index }) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "layer-item";
+    button.classList.toggle("is-active", index === activeLayerIndex);
+    button.addEventListener("click", () => {
+      stopPlayback();
+      saveActiveLayerToFrame();
+      activeLayerIndex = index;
+      drawImageUrlToContext(frame.layers[activeLayerIndex], activeLayerCtx, () => {
+        renderActiveFrameComposite(activeFrameIndex, renderLayers);
+      }, true);
+    });
+
+    const thumb = document.createElement("img");
+    thumb.className = "layer-thumb";
+    thumb.src = layer;
+    thumb.alt = "";
+
+    const label = document.createElement("span");
+    label.className = "layer-label";
+    label.textContent = `${index + 1}`;
+
+    button.append(thumb, label);
+    layersList.append(button);
+  });
+}
 function updateHistoryButtons() {
   const frame = frames[activeFrameIndex];
   undoButton.disabled = frame.undoStack.length === 0 && projectUndoStack.length === 0;
@@ -1078,18 +1400,17 @@ function renderToolboxFrameStrip() {
   });
 }
 
-function updateActiveThumb() {
-  const activeThumb = framesList.children[activeFrameIndex]?.querySelector(".frame-thumb");
+function updateActiveThumb(frameIndex = activeFrameIndex) {
+  const activeThumb = framesList.children[frameIndex]?.querySelector(".frame-thumb");
   if (activeThumb) {
-    activeThumb.src = frames[activeFrameIndex].image;
+    activeThumb.src = frames[frameIndex].image;
   }
 
-  const activeToolboxThumb = toolboxFrameStrip.children[activeFrameIndex]?.querySelector(".toolbox-frame-thumb");
+  const activeToolboxThumb = toolboxFrameStrip.children[frameIndex]?.querySelector(".toolbox-frame-thumb");
   if (activeToolboxThumb) {
-    activeToolboxThumb.src = frames[activeFrameIndex].image;
+    activeToolboxThumb.src = frames[frameIndex].image;
   }
 }
-
 function getFps() {
   const fps = Number(speedSelect.value);
   return Number.isFinite(fps) ? fps : 8;
@@ -1107,7 +1428,7 @@ function stopPlayback() {
 }
 
 function recordProjectState() {
-  projectUndoStack.push(createProjectSnapshot());
+  projectUndoStack.push(createProjectSnapshot(getNextHistoryActionId()));
 
   if (projectUndoStack.length > MAX_HISTORY) {
     projectUndoStack.shift();
@@ -1120,16 +1441,20 @@ function recordProjectState() {
 function createProjectSnapshot() {
   return {
     activeFrameIndex,
+    activeLayerIndex,
     copiedFrameImage,
-    frames: frames.map((frame) => ({
-      id: frame.id,
-      image: frame.image,
-      undoStack: [...frame.undoStack],
-      redoStack: [...frame.redoStack],
-    })),
+    frames: frames.map((frame) => {
+      ensureFrameLayers(frame);
+      return {
+        id: frame.id,
+        image: frame.image,
+        layers: [...frame.layers],
+        undoStack: [...frame.undoStack],
+        redoStack: [...frame.redoStack],
+      };
+    }),
   };
 }
-
 function restoreProjectHistory(direction) {
   const fromStack = direction === "undo" ? projectUndoStack : projectRedoStack;
   const toStack = direction === "undo" ? projectRedoStack : projectUndoStack;
@@ -1138,32 +1463,41 @@ function restoreProjectHistory(direction) {
     return;
   }
 
-  toStack.push(createProjectSnapshot());
   const snapshot = fromStack.pop();
+  toStack.push(createProjectSnapshot(snapshot.actionId ?? 0));
   restoreProjectSnapshot(snapshot);
 }
 
 function restoreProjectSnapshot(snapshot) {
-  frames = snapshot.frames.map((frame) => ({
-    id: frame.id,
-    image: frame.image,
-    undoStack: [...frame.undoStack],
-    redoStack: [...frame.redoStack],
-  }));
+  frames = snapshot.frames.map((frame) => {
+    const restoredFrame = {
+      id: frame.id,
+      image: frame.image,
+      layers: frame.layers ? [...frame.layers] : undefined,
+      undoStack: [...frame.undoStack],
+      redoStack: [...frame.redoStack],
+    };
+    ensureFrameLayers(restoredFrame);
+    return restoredFrame;
+  });
   copiedFrameImage = snapshot.copiedFrameImage;
   activeFrameIndex = Math.min(snapshot.activeFrameIndex, frames.length - 1);
+  activeLayerIndex = Math.min(snapshot.activeLayerIndex ?? activeLayerIndex, LAYER_COUNT - 1);
   loadFrame(activeFrameIndex);
   renderFrames();
+  renderLayers();
   updateHistoryButtons();
 }
-
 function duplicateCurrentFrame() {
   stopPlayback();
-  saveCurrentFrame();
+  saveActiveLayerToFrame();
+  renderActiveFrameComposite(activeFrameIndex);
   recordProjectState();
 
   const sourceFrame = frames[activeFrameIndex];
-  const duplicatedFrame = createFrameFromImage(sourceFrame.image);
+  ensureFrameLayers(sourceFrame);
+  const duplicatedFrame = createFrameFromLayers(sourceFrame.layers);
+  duplicatedFrame.image = sourceFrame.image;
   frames.splice(activeFrameIndex + 1, 0, duplicatedFrame);
   loadFrame(activeFrameIndex + 1);
   renderFrames();
@@ -1171,36 +1505,43 @@ function duplicateCurrentFrame() {
 }
 
 function copyCurrentFrame() {
-  saveCurrentFrame();
-  copiedFrameImage = frames[activeFrameIndex].image;
-  updateFrameActionButtons();
-  setFrameActionStatus("現在のフレームをコピーしました。");
+  const frameIndex = activeFrameIndex;
+  saveActiveLayerToFrame(frameIndex);
+  renderFrameComposite(frames[frameIndex], (image) => {
+    frames[frameIndex].image = image;
+    copiedFrameImage = image;
+    updateActiveThumb(frameIndex);
+    if (frameIndex === activeFrameIndex) {
+      drawImageUrl(image, updateFrameActionButtons);
+    } else {
+      updateFrameActionButtons();
+    }
+    setFrameActionStatus("現在のフレームをコピーしました。");
+  });
 }
-
 function pasteCopiedFrame() {
   if (!copiedFrameImage) {
     return;
   }
 
   stopPlayback();
-  saveCurrentFrame();
+  saveActiveLayerToFrame();
   recordProjectState();
-  frames[activeFrameIndex].image = copiedFrameImage;
-  drawImageUrl(copiedFrameImage, () => {
-    updateActiveThumb();
-    updateHistoryButtons();
-  });
+  frames[activeFrameIndex] = createFrameFromImage(copiedFrameImage, frames[activeFrameIndex].id);
+  loadFrame(activeFrameIndex);
+  updateActiveThumb();
+  updateHistoryButtons();
   setFrameActionStatus("コピーしたフレームを貼り付けました。");
 }
 
 function deleteCurrentFrame() {
   stopPlayback();
-  saveCurrentFrame();
+  saveActiveLayerToFrame();
   recordProjectState();
 
   if (frames.length === 1) {
-    fillCanvasWhite();
-    saveCurrentFrame();
+    frames[activeFrameIndex] = createBlankFrame();
+    loadFrame(activeFrameIndex);
     updateHistoryButtons();
     setFrameActionStatus("最後の1枚なので、フレームを白紙にしました。");
     return;
@@ -1213,10 +1554,21 @@ function deleteCurrentFrame() {
   setFrameActionStatus("現在のフレームを削除しました。");
 }
 
-function createFrameFromImage(image) {
+function createFrameFromImage(image, id = createFrameId()) {
   return {
-    id: createFrameId(),
+    id,
     image,
+    layers: [image, ...Array.from({ length: LAYER_COUNT - 1 }, createBlankLayerImage)],
+    undoStack: [],
+    redoStack: [],
+  };
+}
+
+function createFrameFromLayers(layers, id = createFrameId()) {
+  return {
+    id,
+    image: createCompositeImageSync(),
+    layers: layers.map((layer) => layer),
     undoStack: [],
     redoStack: [],
   };
