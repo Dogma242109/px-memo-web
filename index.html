@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>px memo web</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="images/detail_icon.png">
   </head>
   <body>
     <div class="app-shell">
@@ -196,34 +197,6 @@
               <button id="pasteFrameButton" type="button" disabled>貼り付け</button>
               <button id="deleteFrameButton" class="danger-button" type="button">削除</button>
             </div>
-            <p class="toolbox-note" id="frameActionStatus">選択中のフレームに対して操作します。</p>
-          </div>
-
-          <div class="toolbox-page" id="toolboxEdit" role="tabpanel" aria-labelledby="toolboxTabEdit" data-toolbox-page="edit" hidden>
-            <h2>編集</h2>
-            <div class="toolbox-grid" aria-label="編集操作">
-              <button id="selectionModeButton" type="button" aria-pressed="false">範囲選択</button>
-              <button id="deleteSelectionButton" type="button" disabled>選択削除</button>
-              <button id="transformSelectionButton" type="button">変形</button>
-              <button id="clearSelectionButton" type="button" disabled>選択解除</button>
-            </div>
-            <div class="transform-controls" id="transformControls" hidden>
-              <label class="shape-type-control">
-                <span>倍率</span>
-                <input id="transformScaleInput" type="range" min="25" max="300" value="100">
-              </label>
-              <label class="shape-type-control">
-                <span>回転</span>
-                <select id="transformRotationSelect">
-                  <option value="0">0°</option>
-                  <option value="90">90°</option>
-                  <option value="180">180°</option>
-                  <option value="270">270°</option>
-                </select>
-              </label>
-              <button id="applyTransformButton" type="button">確定</button>
-              <button id="cancelTransformButton" type="button">キャンセル</button>
-            </div>
             <div class="toolbox-tool-row">
               <label class="toggle-line">
                 <input id="onionSkinToggle" type="checkbox">
@@ -238,6 +211,17 @@
                   <option value="4">4枚</option>
                 </select>
               </label>
+            </div>
+            <p class="toolbox-note" id="frameActionStatus">選択中のフレームに対して操作します。</p>
+          </div>
+
+          <div class="toolbox-page" id="toolboxEdit" role="tabpanel" aria-labelledby="toolboxTabEdit" data-toolbox-page="edit" hidden>
+            <h2>編集</h2>
+            <div class="toolbox-grid" aria-label="編集操作">
+              <button id="selectionModeButton" type="button" aria-pressed="false">範囲選択</button>
+              <button id="clearSelectionButton" type="button" disabled>選択解除</button>
+              <button id="transformSelectionButton" type="button">変形</button>
+              <button id="deleteSelectionButton" class="danger-button" type="button" disabled>選択削除</button>
             </div>
             <p class="toolbox-note" id="selectionStatus">範囲選択をONにすると、投げ縄で選択できます。</p>
           </div>
@@ -255,6 +239,10 @@
                 </select>
               </label>
             </div>
+            <div class="toolbox-grid" aria-label="保存">
+              <button id="exportPngButton" type="button">現在フレームをPNG保存</button>
+              <button id="exportGifButton" type="button">全フレームをGIF保存</button>
+            </div>
             <p>画像読み込みや、うごメモ調の減色変換を置く予定です。</p>
           </div>
 
@@ -264,6 +252,24 @@
           </div>
         </div>
       </section>
+
+      <div class="transform-controls transform-hud" id="transformControls" hidden>
+        <label class="shape-type-control">
+          <span>倍率</span>
+          <input id="transformScaleInput" type="range" min="25" max="300" value="100">
+        </label>
+        <label class="shape-type-control">
+          <span>回転</span>
+          <select id="transformRotationSelect">
+            <option value="0">0°</option>
+            <option value="90">90°</option>
+            <option value="180">180°</option>
+            <option value="270">270°</option>
+          </select>
+        </label>
+        <button id="applyTransformButton" type="button">OK</button>
+        <button id="cancelTransformButton" type="button">キャンセル</button>
+      </div>
     </div>
 
     <script src="main.js"></script>
