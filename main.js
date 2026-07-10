@@ -16,6 +16,7 @@ activeLayerCanvas.width = CANVAS_WIDTH;
 activeLayerCanvas.height = CANVAS_HEIGHT;
 const activeLayerCtx = activeLayerCanvas.getContext("2d", { willReadFrequently: true });
 
+const projectTitleInput = document.querySelector("#projectTitle");
 const sizeInput = document.querySelector("#sizeInput");
 const sizeOutput = document.querySelector("#sizeOutput");
 const brushSelect = document.querySelector("#brushSelect");
@@ -59,6 +60,8 @@ const transformScaleInput = document.querySelector("#transformScaleInput");
 const transformRotationSelect = document.querySelector("#transformRotationSelect");
 const applyTransformButton = document.querySelector("#applyTransformButton");
 const cancelTransformButton = document.querySelector("#cancelTransformButton");
+const exportPngButton = document.querySelector("#exportPngButton");
+const exportGifButton = document.querySelector("#exportGifButton");
 
 // Current editor state.
 let currentTool = "pen";
@@ -156,6 +159,8 @@ transformScaleInput.addEventListener("input", updateTransformFromControls);
 transformRotationSelect.addEventListener("change", updateTransformFromControls);
 applyTransformButton.addEventListener("click", applyTransform);
 cancelTransformButton.addEventListener("click", cancelTransform);
+exportPngButton.addEventListener("click", exportCurrentFramePng);
+exportGifButton.addEventListener("click", exportAnimationGif);
 
 onionSkinToggle.addEventListener("change", renderOnionSkin);
 onionSkinCountSelect.addEventListener("change", renderOnionSkin);
@@ -261,6 +266,13 @@ canvas.addEventListener("pointermove", (event) => {
 canvas.addEventListener("pointerup", finishDrawing);
 canvas.addEventListener("pointercancel", cancelDrawing);
 canvas.addEventListener("pointerleave", () => {
+  if (transformState) {
+    isDrawing = false;
+    lastPoint = null;
+    transformDragStart = null;
+    return;
+  }
+
   if (isDrawing && !isShapeMode && !isSelectionMode) {
     saveCurrentFrameQuietly();
   }
@@ -883,7 +895,7 @@ function startTransform() {
 
   transformState = {
     sourceCanvas,
-    originalImage: frames[activeFrameIndex].image,
+    originalImageData: activeLayerCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT),
     x: targetBounds.left,
     y: targetBounds.top,
     scale: 1,
@@ -892,11 +904,12 @@ function startTransform() {
 
   clearTransformSource(targetBounds);
   saveCurrentFrameQuietly();
-  clearSelection("変形中です。ドラッグで移動できます。");
+  clearSelection("変形中です。キャンバス上でドラッグすると移動できます。");
   transformControls.hidden = false;
   transformSelectionButton.classList.add("is-active");
   transformScaleInput.value = "100";
   transformRotationSelect.value = "0";
+  setToolboxOpen(false);
   drawTransformPreview();
 }
 
@@ -938,7 +951,7 @@ function extractTransformSource(bounds) {
   sourceCanvas.height = height;
   const sourceCtx = sourceCanvas.getContext("2d");
   sourceCtx.imageSmoothingEnabled = false;
-  const sourceImage = ctx.getImageData(bounds.left, bounds.top, width, height);
+  const sourceImage = activeLayerCtx.getImageData(bounds.left, bounds.top, width, height);
 
   if (selectionMask) {
     for (let y = 0; y < height; y += 1) {
@@ -960,17 +973,15 @@ function extractTransformSource(bounds) {
 }
 
 function clearTransformSource(bounds) {
-  ctx.fillStyle = "#ffffff";
-
   if (!selectionMask) {
-    ctx.fillRect(bounds.left, bounds.top, bounds.right - bounds.left + 1, bounds.bottom - bounds.top + 1);
+    activeLayerCtx.clearRect(bounds.left, bounds.top, bounds.right - bounds.left + 1, bounds.bottom - bounds.top + 1);
     return;
   }
 
   for (let y = bounds.top; y <= bounds.bottom; y += 1) {
     for (let x = bounds.left; x <= bounds.right; x += 1) {
       if (isPointInSelection(x, y)) {
-        ctx.fillRect(x, y, 1, 1);
+        activeLayerCtx.clearRect(x, y, 1, 1);
       }
     }
   }
@@ -1008,7 +1019,7 @@ function applyTransform() {
     return;
   }
 
-  drawTransformOnto(ctx);
+  drawTransformOnto(activeLayerCtx);
   saveCurrentFrame();
   finishTransform("変形を確定しました。");
 }
@@ -1018,10 +1029,9 @@ function cancelTransform() {
     return;
   }
 
-  drawImageUrl(transformState.originalImage, () => {
-    saveCurrentFrameQuietly();
-    finishTransform("変形をキャンセルしました。");
-  });
+  restoreTransformOriginalLayer();
+  saveCurrentFrameQuietly();
+  finishTransform("変形をキャンセルしました。");
 }
 
 function cancelTransformBeforeNavigation() {
@@ -1029,12 +1039,14 @@ function cancelTransformBeforeNavigation() {
     return;
   }
 
-  const originalImage = transformState.originalImage;
+  restoreTransformOriginalLayer();
+  saveCurrentFrameQuietly();
   finishTransform("変形を中断しました。");
-  drawImageUrl(originalImage, () => {
-    saveCurrentFrameQuietly();
-    updateHistoryButtons();
-  });
+}
+
+function restoreTransformOriginalLayer() {
+  activeLayerCtx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  activeLayerCtx.putImageData(transformState.originalImageData, 0, 0);
 }
 
 function finishTransform(message) {
@@ -1393,6 +1405,7 @@ function pushUndoState() {
   const frame = frames[activeFrameIndex];
   ensureFrameLayers(frame);
   frame.undoStack.push({
+    actionId: getNextHistoryActionId(),
     layerIndex: activeLayerIndex,
     image: activeLayerCanvas.toDataURL("image/png"),
   });
@@ -1434,6 +1447,7 @@ function restoreHistory(direction) {
 function normalizeLayerHistoryState(state) {
   if (typeof state === "string") {
     return {
+      actionId: 0,
       layerIndex: activeLayerIndex,
       image: state,
     };
@@ -1444,7 +1458,7 @@ function normalizeLayerHistoryState(state) {
 function undo() {
   stopPlayback();
 
-  if (frames[activeFrameIndex].undoStack.length > 0) {
+  if (shouldUseFrameUndo()) {
     restoreHistory("undo");
     return;
   }
@@ -1502,6 +1516,257 @@ function drawFrameImageIfActive(frameIndex, imageUrl, afterLoad) {
   });
   image.src = imageUrl;
 }
+function exportCurrentFramePng() {
+  stopPlayback();
+  cancelTransformBeforeNavigation();
+  const frameIndex = activeFrameIndex;
+  saveActiveLayerToFrame(frameIndex);
+  renderFrameComposite(frames[frameIndex], (image) => {
+    frames[frameIndex].image = image;
+    updateActiveThumb(frameIndex);
+    downloadDataUrl(image, getFrameExportFileName(frameIndex, "png"));
+  });
+}
+
+function downloadDataUrl(dataUrl, fileName) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+function getFrameExportFileName(frameIndex, extension) {
+  const title = sanitizeFileName(projectTitleInput.value.trim() || "px-memo");
+  const frameNumber = String(frameIndex + 1).padStart(3, "0");
+  return `${title}-frame-${frameNumber}.${extension}`;
+}
+
+function sanitizeFileName(value) {
+  return value.replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, "_");
+}
+
+const GIF_COLOR_TABLE = createGifColorTable();
+
+function exportAnimationGif() {
+  stopPlayback();
+  cancelTransformBeforeNavigation();
+  saveActiveLayerToFrame();
+  renderFrameComposite(frames[activeFrameIndex], (image) => {
+    frames[activeFrameIndex].image = image;
+    updateActiveThumb(activeFrameIndex);
+    renderFramesToGifFrames(0, [], (gifFrames) => {
+      const gifBlob = createGifBlob(gifFrames, Math.max(2, Math.round(100 / getFps())));
+      downloadBlob(gifBlob, getAnimationExportFileName("gif"));
+    });
+  });
+}
+
+function renderFramesToGifFrames(index, gifFrames, afterRender) {
+  if (index >= frames.length) {
+    afterRender(gifFrames);
+    return;
+  }
+
+  renderFrameComposite(frames[index], (image) => {
+    frames[index].image = image;
+    updateActiveThumb(index);
+    const imageElement = new Image();
+    imageElement.addEventListener("load", () => {
+      const scratch = document.createElement("canvas");
+      scratch.width = CANVAS_WIDTH;
+      scratch.height = CANVAS_HEIGHT;
+      const scratchCtx = scratch.getContext("2d", { willReadFrequently: true });
+      scratchCtx.imageSmoothingEnabled = false;
+      scratchCtx.drawImage(imageElement, 0, 0);
+      const imageData = scratchCtx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+      gifFrames.push(indexImageDataToGifPalette(imageData));
+      renderFramesToGifFrames(index + 1, gifFrames, afterRender);
+    });
+    imageElement.src = image;
+  });
+}
+
+function createGifBlob(indexedFrames, delayCs) {
+  const bytes = [];
+  writeAscii(bytes, "GIF89a");
+  writeUnsignedShort(bytes, CANVAS_WIDTH);
+  writeUnsignedShort(bytes, CANVAS_HEIGHT);
+  bytes.push(0xf7, 0, 0);
+  GIF_COLOR_TABLE.forEach((color) => bytes.push(color[0], color[1], color[2]));
+  writeNetscapeLoopExtension(bytes);
+
+  indexedFrames.forEach((indexedPixels) => {
+    writeGraphicControlExtension(bytes, delayCs);
+    bytes.push(0x2c);
+    writeUnsignedShort(bytes, 0);
+    writeUnsignedShort(bytes, 0);
+    writeUnsignedShort(bytes, CANVAS_WIDTH);
+    writeUnsignedShort(bytes, CANVAS_HEIGHT);
+    bytes.push(0);
+    bytes.push(8);
+    writeSubBlocks(bytes, lzwEncodeGifPixels(indexedPixels));
+  });
+
+  bytes.push(0x3b);
+  return new Blob([new Uint8Array(bytes)], { type: "image/gif" });
+}
+
+function indexImageDataToGifPalette(imageData) {
+  const indexedPixels = new Uint8Array(CANVAS_WIDTH * CANVAS_HEIGHT);
+  const pixels = imageData.data;
+
+  for (let index = 0; index < indexedPixels.length; index += 1) {
+    const offset = index * 4;
+    indexedPixels[index] = findNearestGifColorIndex(pixels[offset], pixels[offset + 1], pixels[offset + 2]);
+  }
+
+  return indexedPixels;
+}
+
+function findNearestGifColorIndex(red, green, blue) {
+  let bestIndex = 0;
+  let bestDistance = Infinity;
+
+  GIF_COLOR_TABLE.forEach((color, index) => {
+    const redDiff = red - color[0];
+    const greenDiff = green - color[1];
+    const blueDiff = blue - color[2];
+    const distance = redDiff * redDiff + greenDiff * greenDiff + blueDiff * blueDiff;
+
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
+  });
+
+  return bestIndex;
+}
+
+function createGifColorTable() {
+  const colors = [
+    [255, 255, 255],
+    [0, 0, 0],
+    [255, 0, 0],
+    [0, 0, 255],
+    [0, 138, 54],
+    [255, 240, 0],
+  ];
+
+  for (let red = 0; red <= 255; red += 51) {
+    for (let green = 0; green <= 255; green += 51) {
+      for (let blue = 0; blue <= 255; blue += 51) {
+        colors.push([red, green, blue]);
+      }
+    }
+  }
+
+  while (colors.length < 256) {
+    colors.push([0, 0, 0]);
+  }
+
+  return colors.slice(0, 256);
+}
+
+function lzwEncodeGifPixels(indexedPixels) {
+  const minCodeSize = 8;
+  const clearCode = 1 << minCodeSize;
+  const endCode = clearCode + 1;
+  const codeSize = minCodeSize + 1;
+  const writer = createBitWriter();
+  let codesSinceClear = 0;
+
+  writer.write(clearCode, codeSize);
+
+  indexedPixels.forEach((value) => {
+    if (codesSinceClear >= 250) {
+      writer.write(clearCode, codeSize);
+      codesSinceClear = 0;
+    }
+
+    writer.write(value, codeSize);
+    codesSinceClear += 1;
+  });
+
+  writer.write(endCode, codeSize);
+  return writer.finish();
+}
+
+function createBitWriter() {
+  const bytes = [];
+  let currentByte = 0;
+  let bitOffset = 0;
+
+  return {
+    write(code, size) {
+      for (let bit = 0; bit < size; bit += 1) {
+        currentByte |= ((code >> bit) & 1) << bitOffset;
+        bitOffset += 1;
+
+        if (bitOffset === 8) {
+          bytes.push(currentByte);
+          currentByte = 0;
+          bitOffset = 0;
+        }
+      }
+    },
+    finish() {
+      if (bitOffset > 0) {
+        bytes.push(currentByte);
+      }
+      return bytes;
+    },
+  };
+}
+
+function writeNetscapeLoopExtension(bytes) {
+  bytes.push(0x21, 0xff, 0x0b);
+  writeAscii(bytes, "NETSCAPE2.0");
+  bytes.push(0x03, 0x01);
+  writeUnsignedShort(bytes, 0);
+  bytes.push(0);
+}
+
+function writeGraphicControlExtension(bytes, delayCs) {
+  bytes.push(0x21, 0xf9, 0x04, 0x00);
+  writeUnsignedShort(bytes, delayCs);
+  bytes.push(0, 0);
+}
+
+function writeSubBlocks(bytes, data) {
+  for (let index = 0; index < data.length; index += 255) {
+    const block = data.slice(index, index + 255);
+    bytes.push(block.length, ...block);
+  }
+  bytes.push(0);
+}
+
+function writeAscii(bytes, text) {
+  for (let index = 0; index < text.length; index += 1) {
+    bytes.push(text.charCodeAt(index));
+  }
+}
+
+function writeUnsignedShort(bytes, value) {
+  bytes.push(value & 0xff, (value >> 8) & 0xff);
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function getAnimationExportFileName(extension) {
+  const title = sanitizeFileName(projectTitleInput.value.trim() || "px-memo");
+  return `${title}-animation.${extension}`;
+}
 function renderActiveFrameComposite(frameIndex = activeFrameIndex, afterLoad) {
   const frame = frames[frameIndex];
   renderFrameComposite(frame, (image) => {
@@ -1551,8 +1816,14 @@ function renderLayers() {
     button.className = "layer-item";
     button.classList.toggle("is-active", index === activeLayerIndex);
     button.addEventListener("click", () => {
+      if (index === activeLayerIndex) {
+        return;
+      }
+
       stopPlayback();
+      cancelTransformBeforeNavigation();
       saveActiveLayerToFrame();
+      recordProjectState();
       activeLayerIndex = index;
       drawImageUrlToContext(frame.layers[activeLayerIndex], activeLayerCtx, () => {
         renderActiveFrameComposite(activeFrameIndex, renderLayers);
@@ -1573,9 +1844,8 @@ function renderLayers() {
   });
 }
 function updateHistoryButtons() {
-  const frame = frames[activeFrameIndex];
-  undoButton.disabled = frame.undoStack.length === 0 && projectUndoStack.length === 0;
-  redoButton.disabled = frame.redoStack.length === 0 && projectRedoStack.length === 0;
+  undoButton.disabled = !shouldUseFrameUndo() && projectUndoStack.length === 0;
+  redoButton.disabled = !shouldUseFrameRedo() && projectRedoStack.length === 0;
 }
 
 function renderFrames() {
@@ -1587,9 +1857,15 @@ function renderFrames() {
     button.className = "frame-item";
     button.classList.toggle("is-active", index === activeFrameIndex);
     button.addEventListener("click", () => {
+      if (index === activeFrameIndex) {
+        return;
+      }
+
       stopPlayback();
       cancelTransformBeforeNavigation();
-      saveCurrentFrame();
+      saveActiveLayerToFrame();
+      renderActiveFrameComposite(activeFrameIndex);
+      recordProjectState();
       loadFrame(index);
       renderFrames();
     });
@@ -1620,9 +1896,15 @@ function renderToolboxFrameStrip() {
     button.className = "toolbox-frame-item";
     button.classList.toggle("is-active", index === activeFrameIndex);
     button.addEventListener("click", () => {
+      if (index === activeFrameIndex) {
+        return;
+      }
+
       stopPlayback();
       cancelTransformBeforeNavigation();
-      saveCurrentFrame();
+      saveActiveLayerToFrame();
+      renderActiveFrameComposite(activeFrameIndex);
+      recordProjectState();
       loadFrame(index);
       renderFrames();
     });
@@ -1679,8 +1961,9 @@ function recordProjectState() {
   updateHistoryButtons();
 }
 
-function createProjectSnapshot() {
+function createProjectSnapshot(actionId = 0) {
   return {
+    actionId,
     activeFrameIndex,
     activeLayerIndex,
     copiedFrameImage,

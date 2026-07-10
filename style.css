@@ -637,6 +637,10 @@ button:disabled:active {
   gap: 10px;
 }
 
+.toolbox-page[hidden] {
+  display: none;
+}
+
 .toolbox-page h2 {
   margin: 0;
   font-size: 18px;
@@ -699,6 +703,11 @@ button:disabled:active {
   min-height: 42px;
 }
 
+.toolbox-grid button.is-active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .toolbox-tool-row {
   display: grid;
   grid-template-columns: minmax(120px, 1fr) auto;
@@ -723,6 +732,16 @@ button:disabled:active {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: rgba(226, 238, 233, 0.55);
+}
+
+.transform-hud {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  width: min(360px, calc(100vw - 32px));
+  background: var(--panel);
+  box-shadow: var(--shadow);
 }
 
 .transform-controls[hidden] {
@@ -784,6 +803,11 @@ button:disabled:active {
 }
 
 @media (max-width: 920px) {
+  .transform-hud {
+    right: 16px;
+    bottom: 16px;
+  }
+
   .workspace {
     grid-template-columns: 1fr;
   }
